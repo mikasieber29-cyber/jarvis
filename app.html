@@ -213,7 +213,7 @@
         <rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/>
       </svg>
     </button>
-    <span class="hint">Knopf/Leertaste: Aufnahme an & aus · Antwort kommt als Helmuts Stimme</span>
+    <span class="hint">Ein Klick: Gespräch an · nochmal: aus — dazwischen einfach reden</span>
   </div>
 
 </div>
@@ -235,8 +235,8 @@
 
   /* ============ Zustände ============ */
   var STATES = {
-    idle:       { name:"Bereit",          sub:"Mikrofon-Knopf oder Leertaste — sprechen — nochmal drücken", cls:"",     spin:.05, expand:1.00, glow:.60, impulses:.25, contract:0, jitter:0 },
-    listening:  { name:"Ich höre zu …",   sub:"nochmal drücken, wenn du fertig bist",                        cls:"",     spin:.03, expand:1.07, glow:.95, impulses:.5,  contract:0, jitter:0 },
+    idle:       { name:"Bereit",          sub:"Ein Klick auf den Knopf (oder Leertaste) — dann einfach reden", cls:"",   spin:.05, expand:1.00, glow:.60, impulses:.25, contract:0, jitter:0 },
+    listening:  { name:"Ich höre zu …",   sub:"sprich einfach — ich merke, wenn du fertig bist",             cls:"",     spin:.03, expand:1.07, glow:.95, impulses:.5,  contract:0, jitter:0 },
     processing: { name:"Ich denke …",     sub:"Hermes arbeitet — Werkzeuge können etwas dauern",             cls:"warm", spin:.22, expand:.93,  glow:.82, impulses:2.6, contract:1, jitter:0 },
     speaking:   { name:"Jarvis spricht",  sub:"Helmut · ElevenLabs",                                         cls:"",     spin:.09, expand:1.02, glow:1.0, impulses:.9,  contract:0, jitter:0 },
     success:    { name:"Erledigt",        sub:"bereit für die nächste Frage",                                cls:"ok",   spin:.05, expand:1.0,  glow:.85, impulses:.3,  contract:0, jitter:0 },
@@ -603,46 +603,84 @@
     trEl.scrollTop = trEl.scrollHeight;
   }
 
-  /* ============ Gesprächs-Schleife ============ */
+  /* ============ Gesprächs-Schleife: einmal an, dann freies Reden ============ */
   var micBtn = document.getElementById("micBtn");
   var latEl = document.getElementById("lat");
   var sbCount = document.getElementById("sbCount"), sbLast = document.getElementById("sbLast");
   var audioSrcEl = document.getElementById("audioSrc");
-  var recorder = null, chunks = [], micStream = null, rounds = 0, busy = false;
+  var SUB_CONT = "sprich einfach — ich merke, wenn du fertig bist";
+  var session = false, busy = false, rounds = 0;
+  var recorder = null, chunks = [], micStream = null;
+  var vad = { speech:false, onset:0, silence:0, cool:0, started:0 };
 
-  function startTalk() {
-    if (busy || current === "listening") return;
-    navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
+  function sessionOn() {
+    navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation:true, noiseSuppression:true, autoGainControl:true }
+    }).then(function (stream) {
       micStream = stream;
       audio.attachStream(stream);
       audioSrcEl.textContent = "MIKROFON";
-      chunks = [];
-      recorder = new MediaRecorder(stream);
-      recorder.ondataavailable = function (e) { if (e.data.size) chunks.push(e.data); };
-      recorder.onstop = sendTalk;
-      recorder.start();
+      session = true;
+      vad.speech = false; vad.onset = 0; vad.silence = 0; vad.cool = 6;
       micBtn.classList.add("live");
       micBtn.setAttribute("aria-pressed","true");
-      setState("listening");
+      setState("listening", SUB_CONT);
     }).catch(function () {
       setState("error", "Mikrofon-Zugriff verweigert — im Browser erlauben und neu laden");
     });
   }
 
-  function stopTalk() {
-    if (!recorder || recorder.state !== "recording") return;
-    recorder.stop();
-    micBtn.classList.remove("live");
-    micBtn.classList.add("busy");
-    micBtn.setAttribute("aria-pressed","false");
-  }
-
-  function sendTalk() {
+  function sessionOff() {
+    session = false;
+    if (recorder && recorder.state === "recording") { recorder.onstop = null; recorder.stop(); }
+    recorder = null;
     if (micStream) { micStream.getTracks().forEach(function (t) { t.stop(); }); micStream = null; }
     audio.detach();
     audioSrcEl.textContent = "BEREIT";
+    micBtn.classList.remove("live","busy");
+    micBtn.setAttribute("aria-pressed","false");
+    setState("idle");
+  }
+
+  function resumeListen() {
+    if (!session) { setState("success"); return; }
+    audioSrcEl.textContent = "MIKROFON";
+    vad.speech = false; vad.onset = 0; vad.silence = 0; vad.cool = 8;
+    setState("listening", SUB_CONT);
+  }
+
+  function beginCapture() {
+    chunks = [];
+    recorder = new MediaRecorder(micStream);
+    recorder.ondataavailable = function (e) { if (e.data.size) chunks.push(e.data); };
+    recorder.onstop = sendTalk;
+    recorder.start();
+    vad.started = Date.now();
+  }
+
+  function endCapture() {
+    if (recorder && recorder.state === "recording") recorder.stop();
+  }
+
+  /* Sprach-Erkennung: wann redest du, wann bist du fertig (alle 100 ms) */
+  setInterval(function () {
+    if (!session || busy) return;
+    if (current !== "listening") return;
+    if (vad.cool > 0) { vad.cool--; return; }
+    var v = audio.vol;
+    if (!vad.speech) {
+      if (v > .13) { vad.onset++; if (vad.onset >= 2) { vad.speech = true; vad.silence = 0; beginCapture(); } }
+      else vad.onset = 0;
+    } else {
+      if (v < .07) { vad.silence++; if (vad.silence >= 13) { vad.speech = false; endCapture(); } }
+      else vad.silence = 0;
+    }
+  }, 100);
+
+  function sendTalk() {
     var blob = new Blob(chunks, { type: "audio/webm" });
-    if (blob.size < 2000) { micBtn.classList.remove("busy"); setState("idle"); return; }
+    var durMs = Date.now() - vad.started;
+    if (blob.size < 3000 || durMs < 500) { resumeListen(); return; }
     busy = true;
     setState("processing");
     var t0 = Date.now();
@@ -650,15 +688,15 @@
       .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
       .then(function (res) {
         busy = false;
-        micBtn.classList.remove("busy");
         var secs = ((Date.now()-t0)/1000).toFixed(1);
         latEl.textContent = secs + " s";
         sbLast.textContent = secs + " s";
         if (!res.ok || res.j.error) {
           setState("error", "Problem bei: " + (res.j.error||"?") + " — " + (res.j.detail||"").slice(0,90));
+          autoTimer = setTimeout(resumeListen, 4200);
           return;
         }
-        if (!res.j.transcript) { setState("idle", "Ich habe nichts verstanden — probier's nochmal"); return; }
+        if (!res.j.transcript) { resumeListen(); return; }
         rounds++; sbCount.textContent = rounds;
         addLine("Chef", res.j.transcript, false);
         addLine("Jarvis", res.j.reply, true);
@@ -667,31 +705,26 @@
           audio.attachElement(el);
           audioSrcEl.textContent = "HELMUT";
           setState("speaking");
-          el.onended = function () {
-            audio.detach(); audioSrcEl.textContent = "BEREIT";
-            setState("success");
-          };
-          el.play().catch(function () {
-            audio.detach(); setState("success");
-          });
+          el.onended = function () { audio.detach(); resumeListen(); };
+          el.play().catch(function () { audio.detach(); resumeListen(); });
         } else {
-          setState("success");
+          resumeListen();
         }
       })
       .catch(function (err) {
         busy = false;
-        micBtn.classList.remove("busy");
         setState("error", "Brücke nicht erreichbar — läuft jarvis_server.py? (" + err + ")");
+        autoTimer = setTimeout(resumeListen, 4200);
       });
   }
 
   micBtn.addEventListener("click", function () {
-    if (current === "listening") stopTalk(); else startTalk();
+    if (session) sessionOff(); else sessionOn();
   });
   document.addEventListener("keydown", function (e) {
     if (e.code === "Space" && e.target === document.body) {
       e.preventDefault();
-      if (current === "listening") stopTalk(); else startTalk();
+      if (session) sessionOff(); else sessionOn();
     }
   });
 
