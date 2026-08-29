@@ -35,6 +35,7 @@
     position: relative; z-index: 1; min-height: 100vh;
     display: grid; grid-template-rows: auto 1fr auto auto auto;
     padding: 0 clamp(14px,3vw,34px) 18px;
+    width: 100%; max-width: 1560px; margin: 0 auto;
   }
   .lbl { font-family:"Share Tech Mono",ui-monospace,Menlo,monospace; font-size:10.5px; letter-spacing:.22em; text-transform:uppercase; color:var(--ink-3); }
 
@@ -47,7 +48,10 @@
   .topright b { color:var(--holo); font-weight:400; }
   .topright b.bad { color:var(--warm); }
 
-  .stage { display:grid; grid-template-columns:minmax(0,.82fr) minmax(340px,2fr) minmax(0,.82fr); gap:clamp(12px,2vw,26px); align-items:center; padding:clamp(6px,1.4vh,18px) 0; }
+  .stage { display:grid; grid-template-columns:minmax(0,.82fr) minmax(340px,2fr) minmax(0,.82fr); gap:clamp(12px,2vw,26px); align-items:center; align-content:center; padding:clamp(6px,1.4vh,18px) 0; }
+  .side { max-width: 340px; }
+  .side:first-child { justify-self: end; }
+  .side:last-child { justify-self: start; }
   .side { display:flex; flex-direction:column; gap:14px; min-width:0; transition:opacity .8s; }
   .hud.calm .side { opacity:.55; }
   .hud.calm .side:hover { opacity:1; }
@@ -118,7 +122,7 @@
   @media (max-width:1080px) {
     .stage { grid-template-columns:1fr; gap:16px; }
     .core { order:-1; }
-    .side { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:14px; }
+    .side { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:14px; max-width:none; justify-self:stretch; }
     .holo-wrap { max-width:460px; }
   }
   @media (max-width:520px) { .line { grid-template-columns:1fr; gap:3px; } }
