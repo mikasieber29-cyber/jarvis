@@ -648,6 +648,7 @@
 
   function resumeListen() {
     if (!session) { setState("success"); return; }
+    if (micStream) audio.attachStream(micStream);   /* wieder ans Mikrofon klemmen! */
     audioSrcEl.textContent = "MIKROFON";
     vad.speech = false; vad.onset = 0; vad.silence = 0; vad.cool = 8;
     setState("listening", SUB_CONT);
@@ -673,7 +674,7 @@
     if (vad.cool > 0) { vad.cool--; return; }
     var v = audio.vol;
     if (!vad.speech) {
-      if (v > .13) { vad.onset++; if (vad.onset >= 2) { vad.speech = true; vad.silence = 0; beginCapture(); } }
+      if (v > .16) { vad.onset++; if (vad.onset >= 3) { vad.speech = true; vad.silence = 0; beginCapture(); } }
       else vad.onset = 0;
     } else {
       if (v < .07) { vad.silence++; if (vad.silence >= 9) { vad.speech = false; endCapture(); } }
