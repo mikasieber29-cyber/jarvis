@@ -676,7 +676,7 @@
       if (v > .13) { vad.onset++; if (vad.onset >= 2) { vad.speech = true; vad.silence = 0; beginCapture(); } }
       else vad.onset = 0;
     } else {
-      if (v < .07) { vad.silence++; if (vad.silence >= 13) { vad.speech = false; endCapture(); } }
+      if (v < .07) { vad.silence++; if (vad.silence >= 9) { vad.speech = false; endCapture(); } }
       else vad.silence = 0;
     }
   }, 100);

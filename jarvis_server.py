@@ -33,7 +33,7 @@ PORT = 8765
 
 HERMES_URL = "http://127.0.0.1:8642/v1/chat/completions"
 ELEVEN_VOICE_ID = "g1jpii0iyvtRs8fqXsd1"          # Helmut
-ELEVEN_MODEL = "eleven_multilingual_v2"
+ELEVEN_MODEL = "eleven_flash_v2_5"   # schnelles Gesprächs-Modell; für Studio-Qualität: eleven_multilingual_v2
 WHISPER_MODEL = "base"                              # später: "small" für bessere Erkennung
 WHISPER_LANG = "de"
 
