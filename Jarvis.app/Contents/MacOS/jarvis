@@ -1,0 +1,8 @@
+#!/bin/bash
+# Jarvis oeffnen: Bruecke sicherstellen, dann randloses App-Fenster
+launchctl kickstart gui/$(id -u)/ch.mika.jarvis.bridge 2>/dev/null
+if [ -d "/Applications/Google Chrome.app" ]; then
+  open -na "Google Chrome" --args --app=http://localhost:8765
+else
+  open "http://localhost:8765"
+fi
