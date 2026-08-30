@@ -2,7 +2,11 @@
 <html lang="de">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Jarvis">
+<meta name="theme-color" content="#23272B">
 <title>JARVIS</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -147,6 +151,28 @@
     .holo-wrap { max-width:460px; }
   }
   @media (max-width:520px) { .line { grid-template-columns:1fr; gap:3px; } }
+
+  /* ---- Handy-Ansicht ---- */
+  @media (max-width: 640px) {
+    .hud { padding: 8px 14px calc(18px + env(safe-area-inset-bottom)); }
+    .topbar { padding: 12px 0 10px; }
+    .brand span { display: none; }
+    .topright div { display: none; }
+    .topright div:first-child { display: block; }   /* STIL-Umschalter bleibt */
+    .holo-wrap { max-width: 300px; }
+    .core-state { min-height: 44px; }
+    #stateSub { font-size: 10px; }
+    .p-audio { display: none; }                      /* Pegel-Panel braucht am Handy niemand */
+    .transcript { max-height: 150px; padding: 10px 2px; }
+    .line .txt { font-size: 14.5px; }
+    .statusbar { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px; }
+    .sitem { min-width: 0; }
+    .controls { position: sticky; bottom: 8px; background: var(--panel-bg); border: 1px solid var(--panel-border); border-radius: 16px; box-shadow: var(--panel-shadow); backdrop-filter: var(--panel-blur); -webkit-backdrop-filter: var(--panel-blur); }
+    .controls .hint { font-size: 9.5px; }
+    .mic { width: 62px; height: 62px; }
+    .mic svg { width: 27px; height: 27px; }
+    #bigClock { font-size: 32px !important; }
+  }
   @media (prefers-reduced-motion:reduce) { .line.j .txt .w { animation:none; opacity:1; } .mic.live { animation:none; } }
 </style>
 </head>
@@ -214,7 +240,7 @@
           <div class="row"><span class="t">…</span><span class="m"><b>Lade Erinnerungen</b><i>beim ersten Mal fragt macOS um Erlaubnis</i></span></div>
         </div>
       </div>
-      <div class="panel">
+      <div class="panel p-audio">
         <span class="cnr c1"></span><span class="cnr c2"></span><span class="cnr c3"></span><span class="cnr c4"></span>
         <div class="phead"><span class="lbl">Audio</span><span class="n" id="audioSrc">BEREIT</span></div>
         <div class="meters">
@@ -688,6 +714,10 @@
   var vad = { speech:false, onset:0, silence:0, cool:0, started:0 };
 
   function sessionOn() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setState("error", "Sprechen geht hier noch nicht (unsichere Verbindung) — am Handy vorerst Telegram nutzen; Tailscale schaltet es frei");
+      return;
+    }
     navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation:true, noiseSuppression:true, autoGainControl:true }
     }).then(function (stream) {

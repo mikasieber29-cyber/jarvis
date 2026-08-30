@@ -356,7 +356,15 @@ def main():
     print("=" * 56)
     # Spracherkennung im Hintergrund vorladen, damit das erste Gespräch flott ist
     threading.Thread(target=get_whisper, daemon=True).start()
-    ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
+    try:
+        import socket
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        print("  Vom iPhone (gleiches WLAN): http://%s:%d" % (s.getsockname()[0], PORT))
+        s.close()
+    except Exception:
+        pass
+    ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
 
 
 if __name__ == "__main__":
