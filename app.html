@@ -8,10 +8,33 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500&family=Chakra+Petch:wght@400;500;600;700&family=Share+Tech+Mono&display=swap">
 <style>
-  :root {
-    --ground: #06101F; --holo: #6FE7FF; --holo-mid: #3FB4DC; --holo-dim: #1E6A88;
-    --line: rgba(111,231,255,.32); --ink: #E4F3FD; --ink-2: #ABC8DE; --ink-3: #7095AE;
-    --warm: #FFB44D; --ok: #57D9B0;
+  :root, body.th-carbon {
+    --ground: #23272B;
+    --bg-img: radial-gradient(ellipse 90% 70% at 50% 35%, rgba(107,240,184,.07), transparent 70%),
+              linear-gradient(180deg, #272C31 0%, #23272B 50%, #1D2125 100%);
+    --scan: .22;
+    --holo: #6BF0B8; --holo-mid: #49C393; --holo-dim: #2A7A5C;
+    --line: #3A4046;
+    --ink: #EDF2F0; --ink-2: #ADB9B5; --ink-3: #8C979B;
+    --warm: #FFD166; --ok: #57D9B0;
+    --panel-bg: #2C3136; --panel-border: #3A4046; --panel-shadow: 0 2px 10px rgba(0,0,0,.25);
+    --panel-blur: none; --panel-radius: 10px; --cnr-d: block;
+    --glow: rgba(107,240,184,.45); --glow-hot: rgba(255,209,102,.5); --glow-ok: rgba(87,217,176,.5);
+    --btn-on-txt: #12241C;
+  }
+  body.th-warm {
+    --ground: #FBE9E1;
+    --bg-img: linear-gradient(165deg, #FDEDE4 0%, #F9DEDA 45%, #EFD7EA 100%);
+    --scan: 0;
+    --holo: #D4553E; --holo-mid: #B94A32; --holo-dim: #E5B8AA;
+    --line: rgba(140,80,70,.22);
+    --ink: #43272E; --ink-2: #7A5560; --ink-3: #A1737B;
+    --warm: #A2489B; --ok: #2E9B6C;
+    --panel-bg: rgba(255,252,250,.68); --panel-border: rgba(255,255,255,.92);
+    --panel-shadow: 0 10px 30px -14px rgba(150,80,90,.32);
+    --panel-blur: blur(10px); --panel-radius: 14px; --cnr-d: none;
+    --glow: rgba(212,85,62,.3); --glow-hot: rgba(162,72,155,.35); --glow-ok: rgba(46,155,108,.35);
+    --btn-on-txt: #FFF6F0;
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; }
@@ -22,14 +45,12 @@
   }
   .bg {
     position: fixed; inset: 0; z-index: 0; pointer-events: none;
-    background:
-      radial-gradient(ellipse 90% 70% at 50% 38%, rgba(35,80,135,.5), transparent 74%),
-      linear-gradient(180deg, #0B1B33 0%, #06101F 46%, #040B18 100%);
+    background: var(--bg-img);
   }
   .bg::after {
     content: ""; position: absolute; inset: 0;
-    background: repeating-linear-gradient(0deg, rgba(0,0,0,0) 0px, rgba(0,0,0,0) 2px, rgba(3,7,16,.4) 3px, rgba(3,7,16,.4) 4px);
-    opacity: .28;
+    background: repeating-linear-gradient(0deg, rgba(0,0,0,0) 0px, rgba(0,0,0,0) 2px, rgba(0,0,0,.35) 3px, rgba(0,0,0,.35) 4px);
+    opacity: var(--scan);
   }
   .hud {
     position: relative; z-index: 1; min-height: 100vh;
@@ -41,7 +62,7 @@
 
   .topbar { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; padding:16px 2px 14px; border-bottom:1px solid var(--line); }
   .brand { display:flex; align-items:baseline; gap:12px; }
-  .brand b { font-family:"Chakra Petch",sans-serif; font-size:20px; font-weight:700; letter-spacing:.34em; color:var(--holo); text-transform:uppercase; text-shadow:0 0 18px rgba(99,227,255,.45); }
+  .brand b { font-family:"Chakra Petch",sans-serif; font-size:20px; font-weight:700; letter-spacing:.34em; color:var(--holo); text-transform:uppercase; text-shadow:0 0 18px var(--glow); }
   .brand span { font-family:"Share Tech Mono",monospace; font-size:10.5px; letter-spacing:.2em; color:var(--ink-3); }
   .topright { display:flex; gap:22px; flex-wrap:wrap; }
   .topright div { font-family:"Share Tech Mono",monospace; font-size:11px; letter-spacing:.12em; color:var(--ink-2); }
@@ -56,8 +77,8 @@
   .hud.calm .side { opacity:.55; }
   .hud.calm .side:hover { opacity:1; }
 
-  .panel { position:relative; background:linear-gradient(180deg,rgba(111,231,255,.10),rgba(111,231,255,.03)); border:1px solid var(--line); box-shadow:0 0 24px rgba(111,231,255,.07) inset; padding:14px 16px 15px; display:flex; flex-direction:column; gap:10px; }
-  .panel > .cnr { position:absolute; width:9px; height:9px; border:1px solid var(--holo-mid); }
+  .panel { position:relative; background:var(--panel-bg); border:1px solid var(--panel-border); box-shadow:var(--panel-shadow); backdrop-filter:var(--panel-blur); -webkit-backdrop-filter:var(--panel-blur); border-radius:var(--panel-radius); padding:14px 16px 15px; display:flex; flex-direction:column; gap:10px; }
+  .panel > .cnr { position:absolute; width:9px; height:9px; border:1px solid var(--holo-mid); display:var(--cnr-d); }
   .panel > .c1 { top:-1px; left:-1px; border-right:none; border-bottom:none; }
   .panel > .c2 { top:-1px; right:-1px; border-left:none; border-bottom:none; }
   .panel > .c3 { bottom:-1px; left:-1px; border-right:none; border-top:none; }
@@ -86,9 +107,9 @@
   canvas { width:100%; height:100%; display:block; }
   .core-name { position:absolute; left:0; right:0; bottom:8%; text-align:center; pointer-events:none; font-family:"Chakra Petch",sans-serif; font-weight:600; font-size:13px; letter-spacing:.55em; text-indent:.55em; color:rgba(160,220,245,.5); text-transform:uppercase; }
   .core-state { display:flex; flex-direction:column; align-items:center; gap:5px; text-align:center; min-height:58px; }
-  #stateName { font-family:"Chakra Petch",sans-serif; font-size:clamp(19px,2.8vw,26px); font-weight:600; letter-spacing:.3em; text-transform:uppercase; color:var(--holo); text-shadow:0 0 24px rgba(99,227,255,.5); transition:color .5s; }
-  #stateName.warm { color:var(--warm); text-shadow:0 0 24px rgba(255,180,77,.5); }
-  #stateName.ok { color:var(--ok); text-shadow:0 0 24px rgba(87,217,176,.5); }
+  #stateName { font-family:"Chakra Petch",sans-serif; font-size:clamp(19px,2.8vw,26px); font-weight:600; letter-spacing:.3em; text-transform:uppercase; color:var(--holo); text-shadow:0 0 24px var(--glow); transition:color .5s; }
+  #stateName.warm { color:var(--warm); text-shadow:0 0 24px var(--glow-hot); }
+  #stateName.ok { color:var(--ok); text-shadow:0 0 24px var(--glow-ok); }
   #stateSub { font-family:"Share Tech Mono",monospace; font-size:11px; letter-spacing:.16em; color:var(--ink-3); text-transform:uppercase; max-width:70ch; }
 
   .transcript { border-top:1px solid var(--line); border-bottom:1px solid var(--line); padding:14px 4px; display:flex; flex-direction:column; gap:9px; min-height:96px; max-height:200px; overflow-y:auto; }
@@ -113,9 +134,9 @@
   .controls .hint { font-family:"Share Tech Mono",monospace; font-size:10.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-3); margin-right:auto; }
   .mic { width:54px; height:54px; border-radius:50%; border:1px solid var(--holo-mid); background:rgba(99,227,255,.05); color:var(--holo); cursor:pointer; display:grid; place-items:center; transition:box-shadow .25s, background .25s; }
   .mic:hover { background:rgba(99,227,255,.12); }
-  .mic.live { background:var(--holo); color:#04121A; box-shadow:0 0 26px rgba(99,227,255,.55); animation:micPulse 1.6s ease-in-out infinite; }
+  .mic.live { background:var(--holo); color:var(--btn-on-txt); box-shadow:0 0 26px var(--glow); animation:micPulse 1.6s ease-in-out infinite; }
   .mic.busy { border-color:var(--warm); color:var(--warm); pointer-events:none; }
-  @keyframes micPulse { 50% { box-shadow:0 0 44px rgba(99,227,255,.85); } }
+  @keyframes micPulse { 50% { box-shadow:0 0 44px var(--glow); } }
   .mic:focus-visible { outline:2px solid var(--warm); outline-offset:3px; }
   .mic svg { width:23px; height:23px; }
 
@@ -129,7 +150,7 @@
   @media (prefers-reduced-motion:reduce) { .line.j .txt .w { animation:none; opacity:1; } .mic.live { animation:none; } }
 </style>
 </head>
-<body>
+<body class="th-carbon">
 <div class="bg"></div>
 
 <div class="hud" id="hud">
@@ -137,6 +158,7 @@
   <div class="topbar">
     <div class="brand"><b>Jarvis</b><span>MK II · LIVE · MACBOOK</span></div>
     <div class="topright">
+      <div>STIL <b id="themeBtn" style="cursor:pointer" title="Klick: Auto / Carbon / Abendrot">AUTO</b></div>
       <div>ZEIT <b id="clock">--:--:--</b></div>
       <div>BRÜCKE <b id="bridge">PRÜFE…</b></div>
       <div>ANTWORTZEIT <b id="lat">—</b></div>
@@ -179,7 +201,7 @@
         <span class="cnr c1"></span><span class="cnr c2"></span><span class="cnr c3"></span><span class="cnr c4"></span>
         <div class="phead"><span class="lbl">Heute</span><span class="n" id="wxCity">—</span></div>
         <div style="display:flex; align-items:baseline; gap:14px;">
-          <span id="bigClock" style="font-family:'Chakra Petch',sans-serif; font-size:38px; font-weight:600; color:var(--holo); text-shadow:0 0 18px rgba(111,231,255,.4); letter-spacing:.04em;">--:--</span>
+          <span id="bigClock" style="font-family:'Chakra Petch',sans-serif; font-size:38px; font-weight:600; color:var(--holo); text-shadow:0 0 18px var(--glow); letter-spacing:.04em;">--:--</span>
           <span id="wxTemp" style="font-family:'Chakra Petch',sans-serif; font-size:26px; font-weight:500; color:var(--ink);">—°</span>
         </div>
         <div id="bigDate" class="lbl" style="letter-spacing:.14em;">—</div>
@@ -378,7 +400,46 @@
     x.fillStyle = gr; x.fillRect(0,0,64,64);
     return c;
   }
-  var spriteCyan = makeSprite(99,227,255), spriteIce = makeSprite(170,240,255), spriteWarm = makeSprite(255,180,77);
+  /* ---- Zwei Welten: Carbon Mint (Abend) & Abendrot (Tag) ---- */
+  var THEMES = {
+    carbon: { p:[107,240,184], hi:[210,255,235], hot:[255,209,102] },
+    warm:   { p:[240,120,90],  hi:[255,216,185], hot:[186,84,178] }
+  };
+  var T3 = THEMES.carbon;
+  function CT(c, a) { return "rgba("+c[0]+","+c[1]+","+c[2]+","+a+")"; }
+  var spriteMain, spriteHi, spriteHot;
+  function rebuildSprites() {
+    spriteMain = makeSprite(T3.p[0], T3.p[1], T3.p[2]);
+    spriteHi   = makeSprite(T3.hi[0], T3.hi[1], T3.hi[2]);
+    spriteHot  = makeSprite(T3.hot[0], T3.hot[1], T3.hot[2]);
+  }
+  var themeMode = "auto", themeCurrent = "";
+  try { themeMode = localStorage.getItem("jarvisTheme") || "auto"; } catch (e) {}
+  function themeForNow() { var h = new Date().getHours(); return (h >= 19 || h < 7) ? "carbon" : "warm"; }
+  function applyTheme(name) {
+    themeCurrent = name;
+    T3 = THEMES[name] || THEMES.carbon;
+    document.body.classList.remove("th-carbon", "th-warm");
+    document.body.classList.add("th-" + name);
+    rebuildSprites();
+    var b = document.getElementById("themeBtn");
+    if (b) b.textContent = themeMode === "auto"
+      ? "AUTO · " + (name === "warm" ? "ABENDROT" : "CARBON")
+      : (name === "warm" ? "ABENDROT" : "CARBON");
+  }
+  function refreshTheme() { applyTheme(themeMode === "auto" ? themeForNow() : themeMode); }
+  refreshTheme();
+  document.addEventListener("DOMContentLoaded", refreshTheme);
+  setInterval(function () {
+    if (themeMode === "auto" && themeForNow() !== themeCurrent) refreshTheme();
+  }, 60000);
+  document.addEventListener("click", function (e) {
+    if (e.target && e.target.id === "themeBtn") {
+      themeMode = themeMode === "auto" ? "carbon" : themeMode === "carbon" ? "warm" : "auto";
+      try { localStorage.setItem("jarvisTheme", themeMode); } catch (err) {}
+      refreshTheme();
+    }
+  });
 
   var impulses = [], impulseTimer = 0;
   function spawnImpulse(strength, warm, speed) {
@@ -444,7 +505,7 @@
       var tw = .35+.65*Math.abs(Math.sin(time*.7+bgp.ph));
       ctx2.globalAlpha = .05+bgp.z*.12*tw;
       var szb = (1+bgp.z*2.4)*3.2;
-      ctx2.drawImage(spriteIce, gx-szb/2, gy-szb/2, szb, szb);
+      ctx2.drawImage(spriteHi, gx-szb/2, gy-szb/2, szb, szb);
     }
     ctx2.restore();
 
@@ -506,9 +567,9 @@
         if (!pen) { ctx2.moveTo(rxp,ryp); pen = true; } else ctx2.lineTo(rxp,ryp);
       }
       ctx2.closePath();
-      ctx2.strokeStyle = "rgba(120,225,255,"+(.045+midGlow*.05).toFixed(3)+")";
+      ctx2.strokeStyle = CT(T3.hi, (.045+midGlow*.05).toFixed(3));
       ctx2.lineWidth = 7; ctx2.stroke();
-      ctx2.strokeStyle = "rgba(160,240,255,"+(.10+midGlow*.10).toFixed(3)+")";
+      ctx2.strokeStyle = CT(T3.hi, (.10+midGlow*.10).toFixed(3));
       ctx2.lineWidth = 1.4; ctx2.stroke();
     }
     ctx2.restore();
@@ -527,13 +588,13 @@
       pth.moveTo(sx[a3],sy[a3]); pth.lineTo(sx[b3],sy[b3]);
     }
     var lineBase = .08+midGlow*.09;
-    ctx2.strokeStyle = "rgba(99,210,246,"+(lineBase*.5).toFixed(3)+")"; ctx2.lineWidth = .7; ctx2.stroke(backPath);
-    ctx2.strokeStyle = "rgba(120,228,255,"+lineBase.toFixed(3)+")"; ctx2.lineWidth = .8; ctx2.stroke(frontPath);
+    ctx2.strokeStyle = CT(T3.p, (lineBase*.5).toFixed(3)); ctx2.lineWidth = .7; ctx2.stroke(backPath);
+    ctx2.strokeStyle = CT(T3.p, lineBase.toFixed(3)); ctx2.lineWidth = .8; ctx2.stroke(frontPath);
     for (var hi = 0; hi < hotA.length; hi++) {
       var ha = hotA[hi], hb = hotB[hi], hv = Math.min(1,hotV[hi]);
       ctx2.strokeStyle = (P.warm > .5)
-        ? "rgba(255,190,110,"+(hv*.55).toFixed(3)+")"
-        : "rgba(190,245,255,"+(hv*.6).toFixed(3)+")";
+        ? CT(T3.hot, (hv*.55).toFixed(3))
+        : CT(T3.hi, (hv*.6).toFixed(3));
       ctx2.lineWidth = .9+hv*1.3;
       ctx2.beginPath(); ctx2.moveTo(sx[ha],sy[ha]); ctx2.lineTo(sx[hb],sy[hb]); ctx2.stroke();
     }
@@ -554,7 +615,7 @@
         if (al > 1) al = 1;
         var ss = (1.6+siz[i]*2.6)*(.55+front*.75)*(1+hotP*.8+sparkle*1.2);
         ctx2.globalAlpha = al;
-        var spr = (P.warm > .5 && hotP > .3) ? spriteWarm : (sparkle ? spriteIce : spriteCyan);
+        var spr = (P.warm > .5 && hotP > .3) ? spriteHot : (sparkle ? spriteHi : spriteMain);
         ctx2.drawImage(spr, sx[i]-ss, sy[i]-ss, ss*2, ss*2);
       }
     }
@@ -564,9 +625,11 @@
     ctx2.globalCompositeOperation = "lighter";
     var pulse = reduce ? .85 : .8+Math.sin(time*1.5)*.2;
     var warmC = P.warm;
-    var cr2 = Math.round(99+warmC*156), cg2 = Math.round(227-warmC*47), cb2 = Math.round(255-warmC*178);
+    var cr2 = Math.round(T3.p[0]+warmC*(T3.hot[0]-T3.p[0])),
+        cg2 = Math.round(T3.p[1]+warmC*(T3.hot[1]-T3.p[1])),
+        cb2 = Math.round(T3.p[2]+warmC*(T3.hot[2]-T3.p[2]));
     var coreG = ctx2.createRadialGradient(CXp,CYp,0,CXp,CYp,R0*.8);
-    coreG.addColorStop(0,"rgba(235,252,255,"+(.30*P.glow*pulse).toFixed(3)+")");
+    coreG.addColorStop(0,"rgba(255,252,246,"+(.30*P.glow*pulse).toFixed(3)+")");
     coreG.addColorStop(.35,"rgba("+cr2+","+cg2+","+cb2+","+(.12*P.glow*pulse).toFixed(3)+")");
     coreG.addColorStop(1,"rgba("+cr2+","+cg2+","+cb2+",0)");
     ctx2.fillStyle = coreG;
