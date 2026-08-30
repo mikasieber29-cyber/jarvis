@@ -15,11 +15,15 @@ Dann im Chrome: http://localhost:8765
 """
 
 import base64
+import datetime
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import threading
+import time
+import urllib.parse
 import urllib.request
 import urllib.error
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -132,6 +136,133 @@ def helmut_speaks(text):
         return r.read()
 
 
+# ---------------------------------------------------------------- Dashboard-Daten
+
+GOOGLE_TOKEN = os.path.join(HOME, ".hermes", "google_token.json")
+CITY = "Zürich"          # fürs Wetter — auf Wunsch anpassen
+_geo = {}
+_dash = {"t": 0, "data": None}
+_rem = {"t": 0, "data": None}
+
+
+def google_creds():
+    try:
+        from google.oauth2.credentials import Credentials
+        from google.auth.transport.requests import Request
+        creds = Credentials.from_authorized_user_file(GOOGLE_TOKEN)
+        if creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        return creds
+    except Exception as e:
+        print("  google_creds:", e)
+        return None
+
+
+def gapi(creds, url):
+    req = urllib.request.Request(url, headers={"Authorization": "Bearer " + creds.token})
+    with urllib.request.urlopen(req, timeout=15) as r:
+        return json.loads(r.read())
+
+
+def fetch_mails(creds):
+    base = "https://gmail.googleapis.com/gmail/v1/users/me/messages"
+    lst = gapi(creds, base + "?maxResults=6&labelIds=INBOX")
+    out = []
+    for m in lst.get("messages", [])[:6]:
+        d = gapi(creds, base + "/" + m["id"] +
+                 "?format=metadata&metadataHeaders=From&metadataHeaders=Subject")
+        hdr = {h["name"]: h["value"] for h in d.get("payload", {}).get("headers", [])}
+        sender = hdr.get("From", "?").split("<")[0].strip().strip('"') or hdr.get("From", "?")
+        ts = int(d.get("internalDate", "0")) / 1000
+        out.append({
+            "from": sender[:34],
+            "subject": hdr.get("Subject", "(kein Betreff)")[:60],
+            "unread": "UNREAD" in d.get("labelIds", []),
+            "time": datetime.datetime.fromtimestamp(ts).astimezone().strftime("%H:%M") if ts else "",
+        })
+    return out
+
+
+def fetch_events(creds):
+    now = datetime.datetime.now().astimezone()
+    t0 = urllib.parse.quote(now.isoformat())
+    t1 = urllib.parse.quote((now + datetime.timedelta(hours=40)).isoformat())
+    url = ("https://www.googleapis.com/calendar/v3/calendars/primary/events"
+           f"?timeMin={t0}&timeMax={t1}&singleEvents=true&orderBy=startTime&maxResults=8")
+    out = []
+    for ev in gapi(creds, url).get("items", []):
+        st = ev.get("start", {})
+        if "dateTime" in st:
+            dt = datetime.datetime.fromisoformat(st["dateTime"]).astimezone()
+            when, allday = dt.strftime("%H:%M"), False
+        else:
+            dt = datetime.datetime.fromisoformat(st.get("date", now.date().isoformat())).astimezone()
+            when, allday = "ganztags", True
+        day = "heute" if dt.date() == now.date() else "morgen"
+        out.append({"title": ev.get("summary", "(ohne Titel)")[:44], "when": when,
+                    "day": day, "allday": allday})
+    return out
+
+
+def fetch_weather():
+    global _geo
+    if not _geo:
+        g = json.loads(urllib.request.urlopen(
+            "https://geocoding-api.open-meteo.com/v1/search?count=1&language=de&name="
+            + urllib.parse.quote(CITY), timeout=10).read())
+        r = g["results"][0]
+        _geo = {"lat": r["latitude"], "lon": r["longitude"], "name": r["name"]}
+    w = json.loads(urllib.request.urlopen(
+        f"https://api.open-meteo.com/v1/forecast?latitude={_geo['lat']}"
+        f"&longitude={_geo['lon']}&current_weather=true"
+        "&daily=temperature_2m_max,temperature_2m_min&timezone=auto", timeout=10).read())
+    code = w["current_weather"]["weathercode"]
+    txt = ("klar" if code == 0 else "leicht bewölkt" if code <= 2 else "bewölkt" if code == 3
+           else "Nebel" if code in (45, 48) else "Regen" if code < 70 else "Schnee" if code < 80
+           else "Schauer" if code < 90 else "Gewitter")
+    return {"city": _geo["name"], "temp": round(w["current_weather"]["temperature"]),
+            "desc": txt,
+            "max": round(w["daily"]["temperature_2m_max"][0]),
+            "min": round(w["daily"]["temperature_2m_min"][0])}
+
+
+def fetch_reminders():
+    if time.time() - _rem["t"] < 300 and _rem["data"] is not None:
+        return _rem["data"]
+    try:
+        r = subprocess.run(
+            ["osascript", "-e",
+             'tell application "Reminders" to get name of every reminder whose completed is false'],
+            capture_output=True, text=True, timeout=15)
+        if r.returncode != 0:
+            raise RuntimeError(r.stderr.strip()[:120] or "osascript-Fehler")
+        names = [n.strip() for n in r.stdout.strip().split(",") if n.strip()]
+        _rem.update(t=time.time(), data=names[:6])
+    except Exception as e:
+        _rem.update(t=time.time(), data={"error": str(e)[:120]})
+    return _rem["data"]
+
+
+def build_dashboard():
+    if time.time() - _dash["t"] < 60 and _dash["data"]:
+        return _dash["data"]
+    data = {}
+    creds = google_creds()
+    for key, fn in (("mails", lambda: fetch_mails(creds)),
+                    ("events", lambda: fetch_events(creds))):
+        try:
+            data[key] = fn() if creds else {"error": "Google-Zugang fehlt"}
+        except Exception as e:
+            data[key] = {"error": str(e)[:120]}
+    try:
+        data["weather"] = fetch_weather()
+    except Exception as e:
+        data["weather"] = {"error": str(e)[:120]}
+    data["reminders"] = fetch_reminders()
+    _dash.update(t=time.time(), data=data)
+    return data
+
+
 # ---------------------------------------------------------------- HTTP-Server
 
 class Handler(BaseHTTPRequestHandler):
@@ -155,6 +286,11 @@ class Handler(BaseHTTPRequestHandler):
                     self._send(200, f.read(), "text/html; charset=utf-8")
             except FileNotFoundError:
                 self._send(404, b"app.html fehlt neben jarvis_server.py", "text/plain")
+        elif self.path == "/api/dashboard":
+            try:
+                self._send(200, json.dumps(build_dashboard()).encode())
+            except Exception as e:
+                self._send(500, json.dumps({"error": str(e)[:200]}).encode())
         elif self.path == "/api/health":
             ok = {"server": True, "elevenlabs": bool(ELEVEN_KEY), "hermes_key": bool(HERMES_KEY)}
             self._send(200, json.dumps(ok).encode())

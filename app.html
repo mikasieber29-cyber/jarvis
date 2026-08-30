@@ -9,8 +9,8 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500&family=Chakra+Petch:wght@400;500;600;700&family=Share+Tech+Mono&display=swap">
 <style>
   :root {
-    --ground: #030710; --holo: #63E3FF; --holo-mid: #2E9DC4; --holo-dim: #17536B;
-    --line: rgba(99,227,255,.18); --ink: #C2DEEE; --ink-2: #7A9BB4; --ink-3: #4B6C83;
+    --ground: #06101F; --holo: #6FE7FF; --holo-mid: #3FB4DC; --holo-dim: #1E6A88;
+    --line: rgba(111,231,255,.32); --ink: #E4F3FD; --ink-2: #ABC8DE; --ink-3: #7095AE;
     --warm: #FFB44D; --ok: #57D9B0;
   }
   * { box-sizing: border-box; }
@@ -23,13 +23,13 @@
   .bg {
     position: fixed; inset: 0; z-index: 0; pointer-events: none;
     background:
-      radial-gradient(ellipse 90% 70% at 50% 38%, rgba(20,50,90,.34), transparent 74%),
-      linear-gradient(180deg, #051022 0%, #030710 46%, #02050C 100%);
+      radial-gradient(ellipse 90% 70% at 50% 38%, rgba(35,80,135,.5), transparent 74%),
+      linear-gradient(180deg, #0B1B33 0%, #06101F 46%, #040B18 100%);
   }
   .bg::after {
     content: ""; position: absolute; inset: 0;
     background: repeating-linear-gradient(0deg, rgba(0,0,0,0) 0px, rgba(0,0,0,0) 2px, rgba(3,7,16,.4) 3px, rgba(3,7,16,.4) 4px);
-    opacity: .45;
+    opacity: .28;
   }
   .hud {
     position: relative; z-index: 1; min-height: 100vh;
@@ -56,7 +56,7 @@
   .hud.calm .side { opacity:.55; }
   .hud.calm .side:hover { opacity:1; }
 
-  .panel { position:relative; background:linear-gradient(180deg,rgba(99,227,255,.04),rgba(99,227,255,.008)); border:1px solid var(--line); padding:14px 16px 15px; display:flex; flex-direction:column; gap:10px; }
+  .panel { position:relative; background:linear-gradient(180deg,rgba(111,231,255,.10),rgba(111,231,255,.03)); border:1px solid var(--line); box-shadow:0 0 24px rgba(111,231,255,.07) inset; padding:14px 16px 15px; display:flex; flex-direction:column; gap:10px; }
   .panel > .cnr { position:absolute; width:9px; height:9px; border:1px solid var(--holo-mid); }
   .panel > .c1 { top:-1px; left:-1px; border-right:none; border-bottom:none; }
   .panel > .c2 { top:-1px; right:-1px; border-left:none; border-bottom:none; }
@@ -149,18 +149,16 @@
     <div class="side">
       <div class="panel">
         <span class="cnr c1"></span><span class="cnr c2"></span><span class="cnr c3"></span><span class="cnr c4"></span>
-        <div class="phead"><span class="lbl">Posteingang</span><span class="n">FRAG MICH</span></div>
-        <div class="rows">
-          <div class="row"><span class="t">TIPP</span><span class="m"><b>"Was ist heute reingekommen?"</b><i>Jarvis liest dein Gmail live</i></span></div>
-          <div class="row"><span class="t">TIPP</span><span class="m"><b>"Beantworte die Mail von …"</b><i>legt nur einen Entwurf an</i></span></div>
+        <div class="phead"><span class="lbl">Posteingang</span><span class="n" id="mailN">LADE…</span></div>
+        <div class="rows" id="mailRows">
+          <div class="row"><span class="t">…</span><span class="m"><b>Verbinde mit Gmail</b><i>einen Moment</i></span></div>
         </div>
       </div>
       <div class="panel">
         <span class="cnr c1"></span><span class="cnr c2"></span><span class="cnr c3"></span><span class="cnr c4"></span>
-        <div class="phead"><span class="lbl">Kalender</span><span class="n">FRAG MICH</span></div>
-        <div class="rows">
-          <div class="row"><span class="t">TIPP</span><span class="m"><b>"Was steht morgen an?"</b><i>direkt aus dem Geschäftskalender</i></span></div>
-          <div class="row"><span class="t">TIPP</span><span class="m"><b>"Trag Freitag 14 Uhr … ein"</b><i>er bucht den Termin</i></span></div>
+        <div class="phead"><span class="lbl">Kalender</span><span class="n" id="calN">HEUTE & MORGEN</span></div>
+        <div class="rows" id="calRows">
+          <div class="row"><span class="t">…</span><span class="m"><b>Verbinde mit Kalender</b><i>einen Moment</i></span></div>
         </div>
       </div>
     </div>
@@ -179,10 +177,19 @@
     <div class="side">
       <div class="panel">
         <span class="cnr c1"></span><span class="cnr c2"></span><span class="cnr c3"></span><span class="cnr c4"></span>
-        <div class="phead"><span class="lbl">Werkzeuge</span><span class="n">ÜBER HERMES</span></div>
-        <div class="rows">
-          <div class="row"><span class="t">✓</span><span class="m"><b>Mail · Kalender · Dateien</b><i>Websuche · Notizen · Erinnerungen</i></span></div>
-          <div class="row"><span class="t">✓</span><span class="m"><b>Gedächtnis</b><i>er merkt sich, was du ihm sagst</i></span></div>
+        <div class="phead"><span class="lbl">Heute</span><span class="n" id="wxCity">—</span></div>
+        <div style="display:flex; align-items:baseline; gap:14px;">
+          <span id="bigClock" style="font-family:'Chakra Petch',sans-serif; font-size:38px; font-weight:600; color:var(--holo); text-shadow:0 0 18px rgba(111,231,255,.4); letter-spacing:.04em;">--:--</span>
+          <span id="wxTemp" style="font-family:'Chakra Petch',sans-serif; font-size:26px; font-weight:500; color:var(--ink);">—°</span>
+        </div>
+        <div id="bigDate" class="lbl" style="letter-spacing:.14em;">—</div>
+        <div id="wxLine" style="font-size:13.5px; color:var(--ink-2);">Wetter lädt …</div>
+      </div>
+      <div class="panel">
+        <span class="cnr c1"></span><span class="cnr c2"></span><span class="cnr c3"></span><span class="cnr c4"></span>
+        <div class="phead"><span class="lbl">Aufgaben</span><span class="n" id="taskN">ERINNERUNGEN</span></div>
+        <div class="rows" id="taskRows">
+          <div class="row"><span class="t">…</span><span class="m"><b>Lade Erinnerungen</b><i>beim ersten Mal fragt macOS um Erlaubnis</i></span></div>
         </div>
       </div>
       <div class="panel">
@@ -239,12 +246,12 @@
 
   /* ============ Zustände ============ */
   var STATES = {
-    idle:       { name:"Bereit",          sub:"Ein Klick auf den Knopf (oder Leertaste) — dann einfach reden", cls:"",   spin:.05, expand:1.00, glow:.60, impulses:.25, contract:0, jitter:0 },
-    listening:  { name:"Ich höre zu …",   sub:"sprich einfach — ich merke, wenn du fertig bist",             cls:"",     spin:.03, expand:1.07, glow:.95, impulses:.5,  contract:0, jitter:0 },
-    processing: { name:"Ich denke …",     sub:"Hermes arbeitet — Werkzeuge können etwas dauern",             cls:"warm", spin:.22, expand:.93,  glow:.82, impulses:2.6, contract:1, jitter:0 },
-    speaking:   { name:"Jarvis spricht",  sub:"Helmut · ElevenLabs",                                         cls:"",     spin:.09, expand:1.02, glow:1.0, impulses:.9,  contract:0, jitter:0 },
-    success:    { name:"Erledigt",        sub:"bereit für die nächste Frage",                                cls:"ok",   spin:.05, expand:1.0,  glow:.85, impulses:.3,  contract:0, jitter:0 },
-    error:      { name:"Das hat nicht geklappt", sub:"",                                                     cls:"warm", spin:.05, expand:.97,  glow:.48, impulses:.4,  contract:0, jitter:1 }
+    idle:       { name:"Bereit",          sub:"Ein Klick auf den Knopf (oder Leertaste) — dann einfach reden", cls:"",   spin:.05, expand:1.00, glow:.82, impulses:.25, contract:0, jitter:0 },
+    listening:  { name:"Ich höre zu …",   sub:"sprich einfach — ich merke, wenn du fertig bist",             cls:"",     spin:.03, expand:1.07, glow:1.0,  impulses:.5,  contract:0, jitter:0 },
+    processing: { name:"Ich denke …",     sub:"Hermes arbeitet — Werkzeuge können etwas dauern",             cls:"warm", spin:.22, expand:.93,  glow:.9,   impulses:2.6, contract:1, jitter:0 },
+    speaking:   { name:"Jarvis spricht",  sub:"Helmut · ElevenLabs",                                         cls:"",     spin:.09, expand:1.02, glow:1.05, impulses:.9,  contract:0, jitter:0 },
+    success:    { name:"Erledigt",        sub:"bereit für die nächste Frage",                                cls:"ok",   spin:.05, expand:1.0,  glow:.95,  impulses:.3,  contract:0, jitter:0 },
+    error:      { name:"Das hat nicht geklappt", sub:"",                                                     cls:"warm", spin:.05, expand:.97,  glow:.55,  impulses:.4,  contract:0, jitter:1 }
   };
   var current = "idle";
   var P = { spin:.05, expand:1, glow:.6, impulses:.25, contract:0, jitter:0, warm:0 };
@@ -519,7 +526,7 @@
       var pth = zm < 0 ? frontPath : backPath;
       pth.moveTo(sx[a3],sy[a3]); pth.lineTo(sx[b3],sy[b3]);
     }
-    var lineBase = .05+midGlow*.07;
+    var lineBase = .08+midGlow*.09;
     ctx2.strokeStyle = "rgba(99,210,246,"+(lineBase*.5).toFixed(3)+")"; ctx2.lineWidth = .7; ctx2.stroke(backPath);
     ctx2.strokeStyle = "rgba(120,228,255,"+lineBase.toFixed(3)+")"; ctx2.lineWidth = .8; ctx2.stroke(frontPath);
     for (var hi = 0; hi < hotA.length; hi++) {
@@ -543,7 +550,7 @@
         if (front < 0) front = 0; if (front > 1) front = 1;
         var hotP = bp[i];
         var sparkle = audio.high > .25 && Math.sin(time*13+ph[i]*7) > .96 ? audio.high : 0;
-        var al = (.10+front*.5)*P.glow + hotP*.5 + sparkle*.5;
+        var al = (.15+front*.55)*P.glow + hotP*.5 + sparkle*.5;
         if (al > 1) al = 1;
         var ss = (1.6+siz[i]*2.6)*(.55+front*.75)*(1+hotP*.8+sparkle*1.2);
         ctx2.globalAlpha = al;
@@ -705,6 +712,7 @@
         rounds++; sbCount.textContent = rounds;
         addLine("Chef", res.j.transcript, false);
         addLine("Jarvis", res.j.reply, true);
+        setTimeout(loadDashboard, 5000);   /* Panels auffrischen, falls er was geändert hat */
         if (res.j.audio_b64) {
           var el = new Audio("data:audio/mpeg;base64," + res.j.audio_b64);
           audio.attachElement(el);
@@ -748,15 +756,66 @@
   var mMid = document.getElementById("mMid"), bMid = document.getElementById("bMid");
   var mHigh = document.getElementById("mHigh"), bHigh = document.getElementById("bHigh");
   function pad(n) { return n < 10 ? "0"+n : ""+n; }
+  var bigClock = document.getElementById("bigClock"), bigDate = document.getElementById("bigDate");
+  var TAGE = ["Sonntag","Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag"];
   setInterval(function () {
     var d = new Date();
     clock.textContent = pad(d.getHours())+":"+pad(d.getMinutes())+":"+pad(d.getSeconds());
+    bigClock.textContent = pad(d.getHours())+":"+pad(d.getMinutes());
+    bigDate.textContent = TAGE[d.getDay()].toUpperCase()+" · "+pad(d.getDate())+"."+pad(d.getMonth()+1)+"."+d.getFullYear();
     var v = Math.round(audio.vol*100), b = Math.round(audio.bass*100), m = Math.round(audio.mid*100), h = Math.round(audio.high*100);
     mVol.textContent = v+" %"; bVol.style.width = v+"%";
     mBass.textContent = b+" %"; bBass.style.width = b+"%";
     mMid.textContent = m+" %"; bMid.style.width = m+"%";
     mHigh.textContent = h+" %"; bHigh.style.width = h+"%";
   }, 120);
+
+  /* ============ Live-Dashboard ============ */
+  function esc(s) { return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+  function rowHtml(t, b, i, hot) {
+    return '<div class="row'+(hot?' hot':'')+'"><span class="t">'+esc(t)+'</span><span class="m"><b>'+esc(b)+'</b><i>'+esc(i)+'</i></span></div>';
+  }
+  function renderDashboard(d) {
+    var mailRows = document.getElementById("mailRows"), mailN = document.getElementById("mailN");
+    var calRows = document.getElementById("calRows");
+    var taskRows = document.getElementById("taskRows"), taskN = document.getElementById("taskN");
+    var wxCity = document.getElementById("wxCity"), wxTemp = document.getElementById("wxTemp"), wxLine = document.getElementById("wxLine");
+
+    if (d.mails && !d.mails.error) {
+      var unread = d.mails.filter(function(m){ return m.unread; }).length;
+      mailN.textContent = unread ? (unread + " UNGELESEN") : "ALLES GELESEN";
+      mailRows.innerHTML = d.mails.slice(0,5).map(function (m) {
+        return rowHtml(m.time || "—", m.subject, m.from, m.unread);
+      }).join("") || rowHtml("—","Posteingang leer","");
+    } else if (d.mails) { mailRows.innerHTML = rowHtml("!","Mail nicht erreichbar", d.mails.error, true); }
+
+    if (d.events && !d.events.error) {
+      calRows.innerHTML = d.events.slice(0,5).map(function (ev) {
+        return rowHtml(ev.when, ev.title, ev.day, ev.day === "heute" && !ev.allday);
+      }).join("") || rowHtml("—","Keine Termine","heute & morgen frei");
+    } else if (d.events) { calRows.innerHTML = rowHtml("!","Kalender nicht erreichbar", d.events.error, true); }
+
+    if (d.weather && !d.weather.error) {
+      wxCity.textContent = d.weather.city.toUpperCase();
+      wxTemp.textContent = d.weather.temp + "°";
+      wxLine.textContent = d.weather.desc + " · Tag " + d.weather.min + "° bis " + d.weather.max + "°";
+    } else if (d.weather) { wxLine.textContent = "Wetter nicht erreichbar"; }
+
+    if (d.reminders && !d.reminders.error) {
+      taskN.textContent = d.reminders.length ? (d.reminders.length + " OFFEN") : "NICHTS OFFEN";
+      taskRows.innerHTML = d.reminders.map(function (t) {
+        return rowHtml("•", t, "");
+      }).join("") || rowHtml("✓","Alles erledigt","");
+    } else if (d.reminders) {
+      taskRows.innerHTML = rowHtml("!","Erinnerungen gesperrt","Systemeinstellungen → Datenschutz → Erinnerungen", true);
+    }
+  }
+  function loadDashboard() {
+    fetch("/api/dashboard").then(function (r) { return r.json(); })
+      .then(renderDashboard).catch(function () {});
+  }
+  loadDashboard();
+  setInterval(loadDashboard, 60000);
 
   fetch("/api/health").then(function (r) { return r.json(); }).then(function (j) {
     if (j.hermes_key && j.elevenlabs) { bridgeEl.textContent = "VERBUNDEN"; }
