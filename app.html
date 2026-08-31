@@ -66,18 +66,20 @@
   .chip b { color:var(--ink); font-weight:600; font-variant-numeric:tabular-nums; }
   .chip .big { font-family:"Inter Tight",sans-serif; font-size:18px; font-weight:700; color:var(--ink); letter-spacing:.01em; }
 
-  .hero { display:grid; grid-template-columns:400px minmax(0,1fr); gap:22px; background:var(--card); border:1px solid var(--line); border-radius:16px; padding:18px 24px; align-items:center; box-shadow:var(--shadow); }
+  .hero { position:relative; display:flex; flex-direction:column; align-items:center; gap:6px; background:var(--card); border:1px solid var(--line); border-radius:16px; padding:22px 24px 84px; box-shadow:var(--shadow); }
   .heart { position:relative; display:flex; flex-direction:column; align-items:center; gap:2px; background:var(--halo); border-radius:16px; }
-  #rc { width:360px; height:360px; display:block; }
+  #rc { width:440px; height:440px; display:block; }
   .state { font-family:"Inter Tight",sans-serif; font-weight:700; letter-spacing:.3em; font-size:12px; color:var(--acc); text-transform:uppercase; text-align:center; }
   .state.warn { color:var(--warn); }
   .state.ok { color:var(--ok); }
   .statesub { font-size:12.5px; color:var(--ink2); text-align:center; min-height:18px; padding:0 14px 10px; max-width:360px; }
 
-  .talk { min-width:0; display:flex; flex-direction:column; gap:10px; }
+  .talk { min-width:0; width:100%; max-width:680px; display:flex; flex-direction:column; align-items:center; gap:10px; }
+  .talk h1, .talk .sub { display:none; }
   .talk h1 { font-family:"Inter Tight",sans-serif; font-size:26px; font-weight:700; margin:0; letter-spacing:-.01em; text-wrap:balance; }
   .talk .sub { margin:0; color:var(--ink2); font-size:14.5px; }
-  .bubbles { display:flex; flex-direction:column; gap:8px; max-height:230px; overflow-y:auto; padding-right:4px; scroll-behavior:smooth; }
+  .bubbles { display:flex; flex-direction:column; align-items:center; gap:8px; width:100%; max-height:120px; overflow-y:auto; padding:0 4px; scroll-behavior:smooth; }
+  .bubbles .line { max-width:100%; text-align:center; }
   .line { max-width:88%; padding:9px 13px; border-radius:12px; font-size:14px; line-height:1.45; }
   .line.me { align-self:flex-end; background:var(--bub); color:var(--ink); }
   .line.j { align-self:flex-start; background:var(--accsoft); color:var(--ink); border:1px solid var(--accline); }
@@ -86,7 +88,7 @@
   .line.j .txt .w { opacity:0; animation:wIn .3s forwards; }
   @keyframes wIn { to { opacity:1; } }
 
-  .microw { display:flex; align-items:center; gap:14px; font-size:13px; color:var(--ink2); }
+  .microw { position:absolute; right:22px; bottom:18px; display:flex; flex-direction:row-reverse; align-items:center; gap:14px; font-size:13px; color:var(--ink2); text-align:right; }
   .mic { width:54px; height:54px; border-radius:50%; border:none; background:var(--acc); color:var(--onacc); display:grid; place-items:center; cursor:pointer; box-shadow:0 8px 22px -6px var(--acc); transition:transform .15s; flex:0 0 auto; }
   .mic:hover { transform:scale(1.05); }
   .mic:focus-visible { outline:3px solid var(--accline); outline-offset:2px; }
@@ -201,8 +203,7 @@
   .mbar { display:none; }
 
   @media (max-width:1100px) {
-    .hero { grid-template-columns:320px minmax(0,1fr); }
-    #rc { width:300px; height:300px; }
+    #rc { width:360px; height:360px; }
   }
   @media (max-width:860px) {
     .app { grid-template-columns:1fr; }
@@ -212,13 +213,13 @@
     .mbar .kv.btn { font-size:12.5px; color:var(--ink2); cursor:pointer; }
     .mbar .kv.btn b { color:var(--ink); }
     main { padding:14px 14px 90px; gap:14px; }
-    .hero { grid-template-columns:1fr; padding:14px; gap:10px; }
+    .hero { padding:14px 14px 20px; gap:8px; }
     .heart { margin:0 auto; }
     #rc { width:260px; height:260px; }
     .talk h1 { font-size:22px; }
     .bubbles { max-height:200px; }
     .sections { grid-template-columns:1fr; }
-    .microw { position:fixed; left:0; right:0; bottom:0; z-index:6; background:var(--card); border-top:1px solid var(--line); padding:10px 16px calc(10px + env(safe-area-inset-bottom)); justify-content:center; }
+    .microw { position:fixed; left:0; right:0; bottom:0; z-index:6; background:var(--card); border-top:1px solid var(--line); padding:10px 16px calc(10px + env(safe-area-inset-bottom)); justify-content:center; flex-direction:row; text-align:left; }
     .mic { width:60px; height:60px; }
     .statusbar { display:none; }
     .mtabs { display:flex; flex-direction:row; gap:4px; padding:8px 10px 0; position:sticky; top:52px; z-index:5; background:var(--bg); }
@@ -295,8 +296,8 @@
             </svg>
           </button>
           <div>
-            <div class="hint"><b>Ein Klick:</b> Gespräch an · nochmal: aus — dazwischen einfach reden</div>
-            <div style="display:flex; align-items:center; gap:10px; margin-top:6px;"><span class="lvl"><i id="bVol"></i></span><span class="srclbl" id="audioSrc">BEREIT</span></div>
+            <div class="hint"><b>Ein Klick:</b> Gespräch an · nochmal: aus</div>
+            <div style="display:flex; align-items:center; justify-content:flex-end; gap:10px; margin-top:6px;"><span class="srclbl" id="audioSrc">BEREIT</span><span class="lvl"><i id="bVol"></i></span></div>
           </div>
         </div>
       </div>
