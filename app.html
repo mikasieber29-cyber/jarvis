@@ -66,13 +66,13 @@
   .chip b { color:var(--ink); font-weight:600; font-variant-numeric:tabular-nums; }
   .chip .big { font-family:"Inter Tight",sans-serif; font-size:18px; font-weight:700; color:var(--ink); letter-spacing:.01em; }
 
-  .hero { position:relative; display:flex; flex-direction:column; align-items:center; gap:6px; background:var(--card); border:1px solid var(--line); border-radius:16px; padding:22px 24px 84px; box-shadow:var(--shadow); }
+  .hero { position:relative; display:flex; flex-direction:column; align-items:center; gap:6px; background:var(--card); border:1px solid var(--line); border-radius:16px; padding:18px 24px 78px; box-shadow:var(--shadow); }
   .heart { position:relative; display:flex; flex-direction:column; align-items:center; gap:2px; background:var(--halo); border-radius:16px; }
   #rc { width:440px; height:440px; display:block; }
-  .state { font-family:"Inter Tight",sans-serif; font-weight:700; letter-spacing:.3em; font-size:12px; color:var(--acc); text-transform:uppercase; text-align:center; }
+  .state { font-family:"Inter Tight",sans-serif; font-weight:700; letter-spacing:.24em; font-size:12px; color:var(--acc); text-transform:uppercase; text-align:right; }
   .state.warn { color:var(--warn); }
   .state.ok { color:var(--ok); }
-  .statesub { font-size:12.5px; color:var(--ink2); text-align:center; min-height:18px; padding:0 14px 10px; max-width:360px; }
+  .statesub { font-size:12.5px; color:var(--ink2); text-align:right; min-height:18px; max-width:340px; margin-top:2px; }
 
   .talk { min-width:0; width:100%; max-width:680px; display:flex; flex-direction:column; align-items:center; gap:10px; }
   .talk h1, .talk .sub { display:none; }
@@ -220,6 +220,8 @@
     .bubbles { max-height:200px; }
     .sections { grid-template-columns:1fr; }
     .microw { position:fixed; left:0; right:0; bottom:0; z-index:6; background:var(--card); border-top:1px solid var(--line); padding:10px 16px calc(10px + env(safe-area-inset-bottom)); justify-content:center; flex-direction:row; text-align:left; }
+    .state, .statesub { text-align:left; }
+    .statesub { max-width:none; }
     .mic { width:60px; height:60px; }
     .statusbar { display:none; }
     .mtabs { display:flex; flex-direction:row; gap:4px; padding:8px 10px 0; position:sticky; top:52px; z-index:5; background:var(--bg); }
@@ -280,8 +282,6 @@
     <div class="hero">
       <div class="heart">
         <canvas id="rc" aria-label="Jarvis-Energieform, reagiert live auf das Gespräch"></canvas>
-        <div class="state" id="stateName">Bereit</div>
-        <div class="statesub" id="stateSub">Ein Klick auf den Knopf — dann einfach reden</div>
       </div>
       <div class="talk">
         <h1 id="greet">Guten Tag, Chef.</h1>
@@ -296,7 +296,8 @@
             </svg>
           </button>
           <div>
-            <div class="hint"><b>Ein Klick:</b> Gespräch an · nochmal: aus</div>
+            <div class="state" id="stateName">Bereit</div>
+            <div class="statesub" id="stateSub">Ein Klick auf den Knopf — dann einfach reden</div>
             <div style="display:flex; align-items:center; justify-content:flex-end; gap:10px; margin-top:6px;"><span class="srclbl" id="audioSrc">BEREIT</span><span class="lvl"><i id="bVol"></i></span></div>
           </div>
         </div>
