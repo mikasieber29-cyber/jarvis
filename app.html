@@ -111,7 +111,7 @@
   .row .m b { display:block; font-weight:600; font-size:13.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .row .m i { font-style:normal; font-size:11.5px; color:var(--ink2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block; }
   .row.hot .m b { color:var(--acc); }
-  .row .cb { width:15px; height:15px; border:1.5px solid var(--acc); border-radius:4px; flex:0 0 auto; }
+  .cb { display:inline-block; width:16px; height:16px; border:1.5px solid var(--acc); border-radius:4px; flex:0 0 auto; }
   .pill { font-size:11px; padding:3px 8px; border-radius:999px; background:var(--pill); color:var(--ink2); font-weight:600; white-space:nowrap; }
   .pill.new { background:var(--accsoft); color:var(--acc); }
   .pill.hi { background:var(--acc); color:var(--onacc); }
@@ -176,7 +176,15 @@
   .lst h3 { font-family:"Inter Tight",sans-serif; font-size:16px; margin:0 0 4px; display:flex; align-items:center; gap:8px; }
   .task { display:flex; align-items:flex-start; gap:10px; padding:9px 0; border-top:1px solid var(--line); font-size:14px; }
   .task:first-of-type { border-top:none; }
-  .task .cb { margin-top:2px; }
+  .task .cb { margin-top:2px; cursor:pointer; position:relative; transition:background .15s; }
+  .row .cb { cursor:pointer; position:relative; }
+  .cb.done, .cb:hover { background:var(--accsoft); }
+  .cb.done { background:var(--acc); }
+  .cb.done::after { content:""; position:absolute; left:4px; top:1px; width:4px; height:8px; border:solid var(--onacc); border-width:0 2px 2px 0; transform:rotate(45deg); }
+  .task.gone, .row.gone { opacity:0; max-height:0; padding:0; overflow:hidden; transition:opacity .35s, max-height .4s .2s, padding .4s .2s; }
+  .task, .row { max-height:80px; }
+  .toast { position:fixed; left:50%; bottom:24px; transform:translateX(-50%); background:var(--ink); color:var(--bg); padding:9px 16px; border-radius:10px; font-size:13px; z-index:20; opacity:0; transition:opacity .25s; pointer-events:none; }
+  .toast.on { opacity:1; }
   .task .due { display:block; font-size:12px; color:var(--ink2); }
 
   /* Verlauf */
@@ -882,11 +890,31 @@
       $("taskCount").textContent = total ? total + " offen" : "nichts offen";
       $("lists").innerHTML = d.map(function (l) {
         return '<div class="card lst"><h3>' + esc(l.list) + ' <span class="pill">' + l.items.length + '</span></h3>' +
-          l.items.map(function (t) { return '<div class="task"><span class="cb"></span><span>' + esc(t.name) + (t.due ? '<span class="due">fällig ' + esc(t.due) + '</span>' : '') + '</span></div>'; }).join("") + '</div>';
+          l.items.map(function (t) { return '<div class="task"><span class="cb" role="checkbox" aria-checked="false" tabindex="0" title="Abhaken" data-list="' + esc(l.list) + '" data-name="' + esc(t.name) + '"></span><span>' + esc(t.name) + (t.due ? '<span class="due">fällig ' + esc(t.due) + '</span>' : '') + '</span></div>'; }).join("") + '</div>';
       }).join("") || '<div class="card empty">Alles erledigt.</div>';
     }).catch(function () { $("lists").innerHTML = '<div class="card empty">Brücke nicht erreichbar.</div>'; });
   }
   $("taskReload").addEventListener("click", loadTasks);
+
+  /* Abhaken — in Apple Erinnerungen wirklich erledigen */
+  var toastEl = document.createElement("div"); toastEl.className = "toast"; document.body.appendChild(toastEl); var toastT = null;
+  function toast(msg) { toastEl.textContent = msg; toastEl.classList.add("on"); if (toastT) clearTimeout(toastT); toastT = setTimeout(function () { toastEl.classList.remove("on"); }, 2600); }
+  function completeTask(cb) {
+    if (cb.classList.contains("done")) return;
+    var rowEl = cb.closest(".task, .row"), name = cb.dataset.name, list = cb.dataset.list || "";
+    cb.classList.add("done"); cb.setAttribute("aria-checked", "true");
+    fetch("/api/reminder/done", { method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify({ list:list, name:name }) })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (!res.ok) throw new Error(res.error || "?");
+        toast("Erledigt: " + name);
+        setTimeout(function () { if (rowEl) rowEl.classList.add("gone"); }, 500);
+        setTimeout(function () { if (rowEl && rowEl.parentNode) rowEl.parentNode.removeChild(rowEl); loaded.task = false; loadDashboard(); if (page === "task") loadTasks(); }, 1300);
+      })
+      .catch(function (err) { cb.classList.remove("done"); cb.setAttribute("aria-checked", "false"); toast("Konnte nicht abhaken: " + err.message); });
+  }
+  document.addEventListener("click", function (e) { var cb = e.target.closest(".cb[data-name]"); if (cb) completeTask(cb); });
+  document.addEventListener("keydown", function (e) { if ((e.code === "Space" || e.code === "Enter") && e.target.classList && e.target.classList.contains("cb") && e.target.dataset.name) { e.preventDefault(); completeTask(e.target); } });
 
   /* ---- Verlauf (im Browser gespeichert) ---- */
   var HIST_KEY = "jarvisHistory";
@@ -957,7 +985,7 @@
       nTasks = d.reminders.length;
       $("taskN").textContent = nTasks ? (nTasks+" offen") : "nichts offen"; $("taskN").className = "pill";
       $("navTaskN").textContent = nTasks ? nTasks : "";
-      $("taskRows").innerHTML = d.reminders.slice(0,6).map(function (t) { return rowHtml("", t, "", false, null, true); }).join("") || rowHtml("✓","Alles erledigt","");
+      $("taskRows").innerHTML = d.reminders.slice(0,6).map(function (t) { return '<div class="row"><span class="cb" role="checkbox" aria-checked="false" tabindex="0" title="Abhaken" data-list="" data-name="' + esc(t) + '"></span><span class="m"><b>' + esc(t) + '</b></span></div>'; }).join("") || rowHtml("✓","Alles erledigt","");
     } else if (d.reminders) { $("taskN").textContent = "gesperrt"; $("taskN").className = "pill bad"; $("taskRows").innerHTML = rowHtml("!","Erinnerungen gesperrt","Systemeinstellungen → Datenschutz → Erinnerungen", true); }
 
     var parts = [];

@@ -438,6 +438,33 @@ return out
     return _remall["data"]
 
 
+def _as_str(v):
+    return '"' + str(v).replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def complete_reminder(list_name, name):
+    """Hakt eine Erinnerung in Apple Erinnerungen ab (completed = true)."""
+    script = (
+        'tell application "Reminders"\n'
+        '  set rs to (' + ('reminders of list ' + _as_str(list_name) if list_name else 'reminders') + ' whose name is ' + _as_str(name) + ' and completed is false)\n'
+        '  if (count of rs) > 0 then\n'
+        '    set completed of item 1 of rs to true\n'
+        '    return "ok"\n'
+        '  end if\n'
+        '  return "notfound"\n'
+        'end tell'
+    )
+    r = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=20)
+    if r.returncode != 0:
+        raise RuntimeError(r.stderr.strip()[:160] or "osascript-Fehler")
+    ok = r.stdout.strip() == "ok"
+    # Caches leeren, damit Übersicht und Aufgaben-Seite sofort stimmen
+    _remall.update(t=0, data=None)
+    _rem.update(t=0, data=None)
+    _dash.update(t=0, data=None)
+    return {"ok": ok, "error": None if ok else "Erinnerung nicht gefunden (schon erledigt?)"}
+
+
 # ---------------------------------------------------------------- HTTP-Server
 
 class Handler(BaseHTTPRequestHandler):
@@ -498,6 +525,15 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, b"not found", "text/plain")
 
     def do_POST(self):
+        if self.path == "/api/reminder/done":
+            try:
+                n = int(self.headers.get("Content-Length", "0"))
+                body = json.loads(self.rfile.read(n) or b"{}")
+                res = complete_reminder(body.get("list", ""), body.get("name", ""))
+                self._send(200, json.dumps(res).encode())
+            except Exception as e:
+                self._send(500, json.dumps({"ok": False, "error": str(e)[:200]}).encode())
+            return
         if self.path != "/api/talk":
             self._send(404, b"not found", "text/plain")
             return
