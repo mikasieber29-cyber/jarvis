@@ -48,6 +48,12 @@ SYSTEM_HINT = (
     "keine Aufzählungszeichen — deine Antwort wird laut vorgelesen."
 )
 
+TEXT_HINT = (
+    "Du bist JARVIS und Mika (nenn ihn Chef) SCHREIBT dir gerade über sein "
+    "Interface. Antworte auf Deutsch, kurz und klar — deine Antwort wird "
+    "gelesen, nicht vorgelesen. Keine Markdown-Zeichen, keine Sternchen."
+)
+
 
 def read_env(path):
     vals = {}
@@ -99,11 +105,11 @@ def transcribe(audio_path):
 
 # ---------------------------------------------------------------- Hermes & Helmut
 
-def ask_hermes(text):
+def ask_hermes(text, hint=None):
     payload = json.dumps({
         "model": "hermes-agent",
         "messages": [
-            {"role": "system", "content": SYSTEM_HINT},
+            {"role": "system", "content": hint or SYSTEM_HINT},
             {"role": "user", "content": text},
         ],
         "stream": False,
@@ -525,6 +531,19 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, b"not found", "text/plain")
 
     def do_POST(self):
+        if self.path == "/api/ask":
+            try:
+                n = int(self.headers.get("Content-Length", "0"))
+                body = json.loads(self.rfile.read(n) or b"{}")
+                text = (body.get("text") or "").strip()
+                if not text:
+                    self._send(400, json.dumps({"error": "leere Frage"}).encode())
+                    return
+                reply = ask_hermes(text, TEXT_HINT)
+                self._send(200, json.dumps({"reply": reply}).encode())
+            except Exception as e:
+                self._send(500, json.dumps({"error": str(e)[:200]}).encode())
+            return
         if self.path == "/api/reminder/done":
             try:
                 n = int(self.headers.get("Content-Length", "0"))

@@ -75,19 +75,31 @@
   .statesub { font-size:12.5px; color:var(--ink2); text-align:right; min-height:18px; max-width:340px; margin-top:2px; }
 
   .talk { min-width:0; width:100%; max-width:680px; display:flex; flex-direction:column; align-items:center; gap:10px; }
+  .talk .bubbles { display:none; }
   .talk h1, .talk .sub { display:none; }
   .talk h1 { font-family:"Inter Tight",sans-serif; font-size:26px; font-weight:700; margin:0; letter-spacing:-.01em; text-wrap:balance; }
   .talk .sub { margin:0; color:var(--ink2); font-size:14.5px; }
-  .bubbles { display:flex; flex-direction:column; align-items:center; gap:8px; width:100%; max-height:120px; min-height:0; overflow-y:auto; padding:0 4px; scroll-behavior:smooth; }
-  .bubbles .line { max-width:100%; text-align:center; }
-  .bubbles:empty { display:none; }
-  .line { max-width:88%; padding:9px 13px; border-radius:12px; font-size:14px; line-height:1.45; }
+  .bubbles { display:flex; flex-direction:column; gap:8px; width:100%; height:180px; overflow-y:auto; padding:6px 2px 2px; scroll-behavior:smooth; }
+  .bubbles:empty::before { content:"Noch nichts gesprochen. Drück den Knopf oben oder schreib hier unten."; color:var(--ink3); font-size:12.5px; line-height:1.5; }
+  #secChat { display:flex; flex-direction:column; }
+  .chatbar { display:flex; align-items:center; gap:8px; border-top:1px solid var(--line); padding-top:10px; margin-top:6px; }
+  .chatbar input { flex:1; min-width:0; border:1px solid var(--line); background:var(--bg); color:var(--ink); border-radius:9px; padding:9px 12px; font:400 13.5px "IBM Plex Sans",Barlow,sans-serif; }
+  .chatbar input::placeholder { color:var(--ink3); }
+  .chatbar input:focus { outline:2px solid var(--accline); outline-offset:1px; border-color:var(--acc); }
+  .send { width:36px; height:36px; flex:0 0 auto; border:none; border-radius:9px; background:var(--acc); color:var(--onacc); display:grid; place-items:center; cursor:pointer; }
+  .send:hover { filter:brightness(1.07); }
+  .send:focus-visible { outline:2px solid var(--accline); outline-offset:2px; }
+  .send svg { width:18px; height:18px; }
+  .send[disabled] { opacity:.45; cursor:default; }
+  .line.think { color:var(--ink2); font-style:italic; }
+  .line { animation:lineIn .22s ease-out both; max-width:92%; padding:8px 12px; border-radius:12px; font-size:14px; line-height:1.45; }
   .line.me { align-self:flex-end; background:var(--bub); color:var(--ink); }
   .line.j { align-self:flex-start; background:var(--accsoft); color:var(--ink); border:1px solid var(--accline); }
   .line .who { display:block; font-family:"Share Tech Mono",monospace; font-size:10px; letter-spacing:.18em; text-transform:uppercase; color:var(--ink2); margin-bottom:2px; }
   .line.j .who { color:var(--acc); }
   .line.j .txt .w { opacity:0; animation:wIn .3s forwards; }
   @keyframes wIn { to { opacity:1; } }
+  @keyframes lineIn { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:none; } }
 
   .microw { position:absolute; right:22px; bottom:18px; display:flex; flex-direction:row-reverse; align-items:center; gap:14px; font-size:13px; color:var(--ink2); text-align:right; }
   .mic { width:54px; height:54px; border-radius:50%; border:none; background:var(--acc); color:var(--onacc); display:grid; place-items:center; cursor:pointer; box-shadow:0 8px 22px -6px var(--acc); transition:transform .15s; flex:0 0 auto; }
@@ -102,7 +114,7 @@
   .srclbl { font-family:"Share Tech Mono",monospace; font-size:10.5px; letter-spacing:.16em; color:var(--ink3); }
 
   /* ---------- Abschnitte ---------- */
-  .sections { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; }
+  .sections { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)) minmax(0,1.15fr); gap:14px; align-items:start; }
   section { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px 14px; scroll-margin-top:16px; }
   section header { display:flex; align-items:center; gap:8px; margin-bottom:4px; }
   section h3 { font-family:"Inter Tight",sans-serif; font-size:15px; font-weight:700; margin:0; }
@@ -203,6 +215,7 @@
   /* ---------- Handy-Kopfzeile (nur klein) ---------- */
   .mbar { display:none; }
 
+  @media (max-width:1380px) { .sections { grid-template-columns:repeat(2,minmax(0,1fr)); } }
   @media (max-width:1100px) {
     #rc { width:360px; height:360px; }
   }
@@ -236,7 +249,7 @@
     .microw { display:none; }
     #viewHome .microw { display:flex; }
   }
-  @media (prefers-reduced-motion:reduce) { .line.j .txt .w { animation:none; opacity:1; } .mic.live { animation:none; } }
+  @media (prefers-reduced-motion:reduce) { .line.j .txt .w { animation:none; opacity:1; } .line { animation:none; } .mic.live { animation:none; } }
 </style>
 </head>
 <body class="th-day">
@@ -287,7 +300,6 @@
       <div class="talk">
         <h1 id="greet">Guten Tag, Chef.</h1>
         <p class="sub" id="summary">Ich hole gerade Mails, Termine und Aufgaben …</p>
-        <div class="bubbles" id="bubbles"></div>
         <div class="microw">
           <button class="mic" id="micBtn" aria-label="Gespräch starten/stoppen" aria-pressed="false">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
@@ -315,6 +327,16 @@
       <section id="secTask">
         <header><h3>Aufgaben</h3><span class="pill" id="taskN">lädt …</span><span class="more">Erinnerungen</span></header>
         <div id="taskRows"><div class="row"><span class="t">…</span><span class="m"><b>Lade Erinnerungen</b><i>beim ersten Mal fragt macOS um Erlaubnis</i></span></div></div>
+      </section>
+      <section id="secChat">
+        <header><h3>Gespräch</h3><span class="more" id="chatHint">sprich oder schreib</span></header>
+        <div class="bubbles" id="bubbles"></div>
+        <form class="chatbar" id="chatForm" autocomplete="off">
+          <input id="chatInput" type="text" placeholder="Jarvis etwas schreiben …" aria-label="Nachricht an Jarvis">
+          <button type="submit" class="send" id="chatSend" aria-label="Senden">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M13 6l6 6-6 6"/></svg>
+          </button>
+        </form>
       </section>
     </div>
 
@@ -723,6 +745,7 @@
       ? '<span class="txt">' + text.split(" ").map(function (w, k) { return '<span class="w" style="animation-delay:' + (k*.18).toFixed(2) + 's"> ' + esc(w) + '</span>'; }).join("") + '</span>'
       : '<span class="txt">' + esc(text) + '</span>';
     div.innerHTML = '<span class="who">' + who + '</span>' + txt;
+    var think = document.getElementById("thinking"); if (think) think.remove();
     bubbles.appendChild(div);
     histAdd(who, text);
     while (bubbles.children.length > 40) bubbles.removeChild(bubbles.firstChild);
@@ -806,6 +829,39 @@
   }
   micBtn.addEventListener("click", function () { if (session) sessionOff(); else sessionOn(); });
   document.addEventListener("keydown", function (e) { if (e.code === "Space" && e.target === document.body) { e.preventDefault(); if (session) sessionOff(); else sessionOn(); } });
+
+  /* ============ Chat-Kachel: schreiben statt sprechen ============ */
+  var chatForm = $("chatForm"), chatInput = $("chatInput"), chatSend = $("chatSend");
+  function showThinking() {
+    var d = document.createElement("div");
+    d.className = "line j think"; d.id = "thinking";
+    d.innerHTML = '<span class="who">Jarvis</span><span class="txt">denkt nach …</span>';
+    bubbles.appendChild(d); bubbles.scrollTop = bubbles.scrollHeight;
+  }
+  chatForm.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var text = chatInput.value.trim();
+    if (!text || chatSend.disabled) return;
+    chatInput.value = "";
+    addLine("Chef", text, false);
+    showThinking();
+    chatSend.disabled = true;
+    fetch("/api/ask", { method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify({ text:text }) })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        chatSend.disabled = false;
+        var t = document.getElementById("thinking"); if (t) t.remove();
+        if (res.error) { addLine("Jarvis", "Das hat nicht geklappt: " + res.error, false); return; }
+        addLine("Jarvis", res.reply, false);
+        rounds++; sbCount.textContent = rounds;
+        setTimeout(loadDashboard, 5000);
+      })
+      .catch(function (err) {
+        chatSend.disabled = false;
+        var t = document.getElementById("thinking"); if (t) t.remove();
+        addLine("Jarvis", "Brücke nicht erreichbar (" + err + ")", false);
+      });
+  });
 
   /* ============ Seiten ============ */
   var PAGES = { home:"viewHome", mail:"viewMail", cal:"viewCal", task:"viewTask", hist:"viewHist" };
