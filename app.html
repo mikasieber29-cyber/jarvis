@@ -78,8 +78,9 @@
   .talk h1, .talk .sub { display:none; }
   .talk h1 { font-family:"Inter Tight",sans-serif; font-size:26px; font-weight:700; margin:0; letter-spacing:-.01em; text-wrap:balance; }
   .talk .sub { margin:0; color:var(--ink2); font-size:14.5px; }
-  .bubbles { display:flex; flex-direction:column; align-items:center; gap:8px; width:100%; max-height:120px; overflow-y:auto; padding:0 4px; scroll-behavior:smooth; }
+  .bubbles { display:flex; flex-direction:column; align-items:center; gap:8px; width:100%; max-height:120px; min-height:0; overflow-y:auto; padding:0 4px; scroll-behavior:smooth; }
   .bubbles .line { max-width:100%; text-align:center; }
+  .bubbles:empty { display:none; }
   .line { max-width:88%; padding:9px 13px; border-radius:12px; font-size:14px; line-height:1.45; }
   .line.me { align-self:flex-end; background:var(--bub); color:var(--ink); }
   .line.j { align-self:flex-start; background:var(--accsoft); color:var(--ink); border:1px solid var(--accline); }
@@ -286,9 +287,7 @@
       <div class="talk">
         <h1 id="greet">Guten Tag, Chef.</h1>
         <p class="sub" id="summary">Ich hole gerade Mails, Termine und Aufgaben …</p>
-        <div class="bubbles" id="bubbles">
-          <div class="line j"><span class="who">Jarvis</span><span class="txt">Bereit, Chef. Drück den Knopf und sprich mit mir.</span></div>
-        </div>
+        <div class="bubbles" id="bubbles"></div>
         <div class="microw">
           <button class="mic" id="micBtn" aria-label="Gespräch starten/stoppen" aria-pressed="false">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
