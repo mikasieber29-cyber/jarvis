@@ -263,6 +263,181 @@ def build_dashboard():
     return data
 
 
+# ---------------------------------------------------------------- Unterseiten (Posteingang, Woche, Aufgaben)
+
+_mails = {"t": 0, "data": None}
+_week = {"t": 0, "data": None}
+_remall = {"t": 0, "data": None}
+_bodies = {}
+
+WOCHENTAGE = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"]
+
+
+def _when_label(ts, now):
+    d = datetime.datetime.fromtimestamp(ts).astimezone()
+    if d.date() == now.date():
+        return d.strftime("%H:%M")
+    if d.date() == (now - datetime.timedelta(days=1)).date():
+        return "Gestern"
+    return d.strftime("%d.%m.")
+
+
+def fetch_mail_list(creds, n=30):
+    if time.time() - _mails["t"] < 60 and _mails["data"] is not None:
+        return _mails["data"]
+    base = "https://gmail.googleapis.com/gmail/v1/users/me/messages"
+    lst = gapi(creds, base + f"?maxResults={n}&labelIds=INBOX")
+    now = datetime.datetime.now().astimezone()
+    out = []
+    for m in lst.get("messages", [])[:n]:
+        d = gapi(creds, base + "/" + m["id"] +
+                 "?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date")
+        hdr = {h["name"]: h["value"] for h in d.get("payload", {}).get("headers", [])}
+        raw_from = hdr.get("From", "?")
+        sender = raw_from.split("<")[0].strip().strip('"') or raw_from
+        ts = int(d.get("internalDate", "0")) / 1000
+        out.append({
+            "id": m["id"],
+            "from": sender[:40],
+            "email": raw_from,
+            "subject": hdr.get("Subject", "(kein Betreff)")[:120],
+            "snippet": d.get("snippet", "")[:140],
+            "unread": "UNREAD" in d.get("labelIds", []),
+            "time": _when_label(ts, now) if ts else "",
+            "date": datetime.datetime.fromtimestamp(ts).astimezone().strftime("%a %d.%m.%Y %H:%M") if ts else "",
+        })
+    _mails.update(t=time.time(), data=out)
+    return out
+
+
+def _b64url(data):
+    data = data.replace("-", "+").replace("_", "/")
+    data += "=" * (-len(data) % 4)
+    return base64.b64decode(data).decode("utf-8", "replace")
+
+
+def _html_to_text(html):
+    import re, html as h
+    html = re.sub(r"(?is)<(style|script|head)[^>]*>.*?</\1>", " ", html)
+    html = re.sub(r"(?i)<br\s*/?>|</p>|</div>|</tr>|</li>|</h[1-6]>", "\n", html)
+    html = re.sub(r"(?s)<[^>]+>", " ", html)
+    txt = h.unescape(html)
+    txt = re.sub(r"[ \t\r\f\v]+", " ", txt)
+    txt = re.sub(r"\n\s*\n\s*\n+", "\n\n", txt)
+    return txt.strip()
+
+
+def _walk_parts(part, found):
+    mime = part.get("mimeType", "")
+    body = part.get("body", {}).get("data")
+    if body and mime in ("text/plain", "text/html"):
+        found.setdefault(mime, _b64url(body))
+    for p in part.get("parts", []) or []:
+        _walk_parts(p, found)
+
+
+def fetch_mail_body(creds, mid):
+    if mid in _bodies:
+        return _bodies[mid]
+    base = "https://gmail.googleapis.com/gmail/v1/users/me/messages/" + mid + "?format=full"
+    d = gapi(creds, base)
+    hdr = {h["name"]: h["value"] for h in d.get("payload", {}).get("headers", [])}
+    found = {}
+    _walk_parts(d.get("payload", {}), found)
+    text = found.get("text/plain") or (_html_to_text(found["text/html"]) if "text/html" in found else d.get("snippet", ""))
+    ts = int(d.get("internalDate", "0")) / 1000
+    out = {
+        "id": mid,
+        "from": hdr.get("From", "?"),
+        "to": hdr.get("To", ""),
+        "subject": hdr.get("Subject", "(kein Betreff)"),
+        "date": datetime.datetime.fromtimestamp(ts).astimezone().strftime("%A, %d. %B %Y, %H:%M") if ts else "",
+        "body": text[:30000],
+    }
+    if len(_bodies) > 60:
+        _bodies.clear()
+    _bodies[mid] = out
+    return out
+
+
+def fetch_week(creds, days=7):
+    if time.time() - _week["t"] < 120 and _week["data"] is not None:
+        return _week["data"]
+    now = datetime.datetime.now().astimezone()
+    start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    t0 = urllib.parse.quote(start.isoformat())
+    t1 = urllib.parse.quote((start + datetime.timedelta(days=days)).isoformat())
+    url = ("https://www.googleapis.com/calendar/v3/calendars/primary/events"
+           f"?timeMin={t0}&timeMax={t1}&singleEvents=true&orderBy=startTime&maxResults=60")
+    daysout = []
+    byday = {}
+    for i in range(days):
+        d = (start + datetime.timedelta(days=i)).date()
+        label = "Heute" if i == 0 else "Morgen" if i == 1 else WOCHENTAGE[d.weekday()]
+        entry = {"date": d.isoformat(), "label": label, "sub": d.strftime("%d.%m."), "events": []}
+        daysout.append(entry)
+        byday[d.isoformat()] = entry
+    for ev in gapi(creds, url).get("items", []):
+        st, en = ev.get("start", {}), ev.get("end", {})
+        if "dateTime" in st:
+            dt = datetime.datetime.fromisoformat(st["dateTime"]).astimezone()
+            et = datetime.datetime.fromisoformat(en["dateTime"]).astimezone() if "dateTime" in en else None
+            when, allday = dt.strftime("%H:%M"), False
+            until = et.strftime("%H:%M") if et else ""
+            key = dt.date().isoformat()
+        else:
+            dt = datetime.datetime.fromisoformat(st.get("date", start.date().isoformat()))
+            when, allday, until = "ganztags", True, ""
+            key = dt.date().isoformat()
+        item = {"title": ev.get("summary", "(ohne Titel)")[:80], "when": when, "until": until,
+                "allday": allday, "location": (ev.get("location") or "")[:60],
+                "past": (not allday) and dt < now}
+        if key in byday:
+            byday[key]["events"].append(item)
+    _week.update(t=time.time(), data=daysout)
+    return daysout
+
+
+def fetch_reminders_all():
+    if time.time() - _remall["t"] < 300 and _remall["data"] is not None:
+        return _remall["data"]
+    script = '''
+set out to ""
+tell application "Reminders"
+  repeat with l in lists
+    set ln to name of l
+    repeat with r in (reminders of l whose completed is false)
+      set dd to ""
+      try
+        set dd to (due date of r) as string
+      end try
+      set out to out & ln & tab & (name of r) & tab & dd & linefeed
+    end repeat
+  end repeat
+end tell
+return out
+'''
+    try:
+        r = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=20)
+        if r.returncode != 0:
+            raise RuntimeError(r.stderr.strip()[:120] or "osascript-Fehler")
+        lists = {}
+        for line in r.stdout.split("\n"):
+            if not line.strip():
+                continue
+            parts = line.split("\t")
+            ln = parts[0].strip()
+            name = parts[1].strip() if len(parts) > 1 else ""
+            due = parts[2].strip() if len(parts) > 2 else ""
+            if name:
+                lists.setdefault(ln, []).append({"name": name, "due": due})
+        data = [{"list": k, "items": v} for k, v in lists.items()]
+        _remall.update(t=time.time(), data=data)
+    except Exception as e:
+        _remall.update(t=time.time(), data={"error": str(e)[:120]})
+    return _remall["data"]
+
+
 # ---------------------------------------------------------------- HTTP-Server
 
 class Handler(BaseHTTPRequestHandler):
@@ -279,6 +454,16 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _json_call(self, fn):
+        creds = google_creds()
+        if not creds:
+            self._send(200, json.dumps({"error": "Google-Zugang fehlt"}).encode())
+            return
+        try:
+            self._send(200, json.dumps(fn(creds)).encode())
+        except Exception as e:
+            self._send(500, json.dumps({"error": str(e)[:200]}).encode())
+
     def do_GET(self):
         if self.path in ("/", "/index.html", "/app.html"):
             try:
@@ -289,6 +474,21 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path == "/api/dashboard":
             try:
                 self._send(200, json.dumps(build_dashboard()).encode())
+            except Exception as e:
+                self._send(500, json.dumps({"error": str(e)[:200]}).encode())
+        elif self.path.startswith("/api/mails"):
+            self._json_call(lambda c: fetch_mail_list(c))
+        elif self.path.startswith("/api/mail?"):
+            q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            mid = (q.get("id") or [""])[0]
+            self._json_call(lambda c: fetch_mail_body(c, mid))
+        elif self.path.startswith("/api/events"):
+            q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            days = max(1, min(14, int((q.get("days") or ["7"])[0])))
+            self._json_call(lambda c: fetch_week(c, days))
+        elif self.path.startswith("/api/reminders"):
+            try:
+                self._send(200, json.dumps(fetch_reminders_all()).encode())
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)[:200]}).encode())
         elif self.path == "/api/health":

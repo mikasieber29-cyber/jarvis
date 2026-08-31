@@ -121,6 +121,74 @@
   .statusbar b { color:var(--ink); font-weight:600; }
   .statusbar b.warn { color:var(--warn); }
 
+  /* ---------- Unterseiten ---------- */
+  .view[hidden] { display:none !important; }
+  .view { display:flex; flex-direction:column; gap:18px; }
+  .ph { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  .ph h2 { font-family:"Inter Tight",sans-serif; font-size:22px; font-weight:700; margin:0; }
+  .ph .sp { flex:1; }
+  .btn { border:1px solid var(--line); background:var(--card); color:var(--ink); border-radius:9px; padding:7px 12px; font:500 13px Barlow,sans-serif; cursor:pointer; }
+  .btn:hover { background:var(--bub); }
+  .btn:focus-visible { outline:2px solid var(--accline); }
+  .btn.acc { background:var(--acc); border-color:var(--acc); color:var(--onacc); font-weight:600; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; }
+  .empty { padding:26px; text-align:center; color:var(--ink2); font-size:14px; }
+
+  /* Posteingang: Liste links, Inhalt rechts */
+  .mailwrap { display:grid; grid-template-columns:400px minmax(0,1fr); gap:14px; min-height:60vh; }
+  .maillist { overflow-y:auto; max-height:calc(100vh - 150px); }
+  .mrow { display:grid; grid-template-columns:1fr auto; gap:2px 10px; padding:11px 14px; border-top:1px solid var(--line); cursor:pointer; }
+  .mrow:first-child { border-top:none; }
+  .mrow:hover { background:var(--bub); }
+  .mrow.sel { background:var(--accsoft); }
+  .mrow .f { font-weight:600; font-size:13.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .mrow .tm { font-family:"Share Tech Mono",monospace; font-size:11px; color:var(--ink2); }
+  .mrow .s { grid-column:1 / -1; font-size:13.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .mrow .sn { grid-column:1 / -1; font-size:12.5px; color:var(--ink2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .mrow.unread .f, .mrow.unread .s { color:var(--ink); }
+  .mrow.unread .f::before { content:""; display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--acc); margin-right:7px; vertical-align:middle; }
+  .mrow:not(.unread) .f, .mrow:not(.unread) .s { color:var(--ink2); font-weight:500; }
+  .mailview { padding:22px 26px; overflow-y:auto; max-height:calc(100vh - 150px); }
+  .mailview h3 { font-family:"Inter Tight",sans-serif; font-size:20px; margin:0 0 10px; text-wrap:balance; }
+  .mailview .meta { display:grid; grid-template-columns:auto 1fr; gap:3px 12px; font-size:13px; color:var(--ink2); padding-bottom:14px; border-bottom:1px solid var(--line); margin-bottom:16px; }
+  .mailview .meta b { color:var(--ink); font-weight:600; }
+  .mailview .body { white-space:pre-wrap; word-break:break-word; font-size:14.5px; line-height:1.55; max-width:78ch; }
+  .back { display:none; }
+
+  /* Termine: Woche nach Tagen */
+  .week { display:flex; flex-direction:column; gap:12px; }
+  .day { padding:12px 16px; }
+  .day header { display:flex; align-items:baseline; gap:10px; margin-bottom:4px; }
+  .day h3 { font-family:"Inter Tight",sans-serif; font-size:16px; margin:0; }
+  .day header .sub { font-size:12.5px; color:var(--ink2); }
+  .day.today h3 { color:var(--acc); }
+  .ev { display:grid; grid-template-columns:96px 1fr auto; gap:10px; align-items:center; padding:9px 0; border-top:1px solid var(--line); font-size:14px; }
+  .ev:first-of-type { border-top:none; }
+  .ev .t { font-family:"Share Tech Mono",monospace; font-size:12px; color:var(--ink2); font-variant-numeric:tabular-nums; }
+  .ev .ttl { font-weight:600; }
+  .ev .loc { font-size:12px; color:var(--ink2); }
+  .ev.past { opacity:.5; }
+  .day .free { font-size:13px; color:var(--ink3); padding:6px 0; }
+
+  /* Aufgaben: nach Liste */
+  .lists { display:grid; grid-template-columns:repeat(auto-fill, minmax(320px,1fr)); gap:14px; }
+  .lst { padding:12px 16px; }
+  .lst h3 { font-family:"Inter Tight",sans-serif; font-size:16px; margin:0 0 4px; display:flex; align-items:center; gap:8px; }
+  .task { display:flex; align-items:flex-start; gap:10px; padding:9px 0; border-top:1px solid var(--line); font-size:14px; }
+  .task:first-of-type { border-top:none; }
+  .task .cb { margin-top:2px; }
+  .task .due { display:block; font-size:12px; color:var(--ink2); }
+
+  /* Verlauf */
+  .hist { display:flex; flex-direction:column; gap:14px; max-width:860px; }
+  .hday { padding:14px 18px; display:flex; flex-direction:column; gap:8px; }
+  .hday h3 { font-family:"Inter Tight",sans-serif; font-size:14px; margin:0 0 4px; color:var(--ink2); letter-spacing:.06em; text-transform:uppercase; }
+  .hday .line { max-width:92%; }
+  .hday .line .ts { float:right; font-family:"Share Tech Mono",monospace; font-size:10px; color:var(--ink3); margin-left:10px; }
+
+  /* Handy-Reiter */
+  .mtabs { display:none; }
+
   /* ---------- Handy-Kopfzeile (nur klein) ---------- */
   .mbar { display:none; }
 
@@ -145,6 +213,16 @@
     .microw { position:fixed; left:0; right:0; bottom:0; z-index:6; background:var(--card); border-top:1px solid var(--line); padding:10px 16px calc(10px + env(safe-area-inset-bottom)); justify-content:center; }
     .mic { width:60px; height:60px; }
     .statusbar { display:none; }
+    .mtabs { display:flex; flex-direction:row; gap:4px; padding:8px 10px 0; position:sticky; top:52px; z-index:5; background:var(--bg); }
+    .mtabs a { flex:1; text-align:center; font-size:12px; padding:7px 4px; border-radius:8px; color:var(--ink2); }
+    .mtabs a.on { background:var(--accsoft); color:var(--acc); font-weight:600; }
+    .mailwrap { grid-template-columns:1fr; }
+    .mailwrap.show .maillist { display:none; }
+    .mailwrap:not(.show) .mailview { display:none; }
+    .back { display:inline-block; }
+    .maillist, .mailview { max-height:none; }
+    .microw { display:none; }
+    #viewHome .microw { display:flex; }
   }
   @media (prefers-reduced-motion:reduce) { .line.j .txt .w { animation:none; opacity:1; } .mic.live { animation:none; } }
 </style>
@@ -156,11 +234,11 @@
   <aside class="sb">
     <div class="ws"><span class="dot"></span> Jarvis <span>· Mika</span></div>
     <nav id="nav">
-      <a class="on" data-go="top"><span class="ic">◉</span> Übersicht</a>
-      <a data-go="secMail"><span class="ic">✉</span> Posteingang <span class="cnt" id="navMailN"></span></a>
-      <a data-go="secCal"><span class="ic">▦</span> Termine</a>
-      <a data-go="secTask"><span class="ic">☐</span> Aufgaben <span class="cnt" id="navTaskN"></span></a>
-      <a data-go="bubbles"><span class="ic">⟲</span> Verlauf</a>
+      <a class="on" data-page="home"><span class="ic">◉</span> Übersicht</a>
+      <a data-page="mail"><span class="ic">✉</span> Posteingang <span class="cnt" id="navMailN"></span></a>
+      <a data-page="cal"><span class="ic">▦</span> Termine</a>
+      <a data-page="task"><span class="ic">☐</span> Aufgaben <span class="cnt" id="navTaskN"></span></a>
+      <a data-page="hist"><span class="ic">⟲</span> Verlauf</a>
     </nav>
     <div class="sb-foot">
       <div class="kv btn" id="themeBtn" title="Klick: Auto / Tag / Abend"><span>Stil</span><b id="themeLbl">Auto</b></div>
@@ -176,6 +254,11 @@
       <div class="kv btn" id="themeBtnM">Stil <b id="themeLblM">Auto</b></div>
     </div>
 
+    <nav class="mtabs" id="mtabs">
+      <a class="on" data-page="home">Übersicht</a><a data-page="mail">Mails</a><a data-page="cal">Termine</a><a data-page="task">Aufgaben</a><a data-page="hist">Verlauf</a>
+    </nav>
+
+    <div class="view" id="viewHome">
     <div class="topbar" id="top">
       <div><h2>Übersicht</h2><div class="date" id="bigDate">—</div></div>
       <div class="chips">
@@ -231,6 +314,30 @@
       <div>Gespräche <b id="sbCount">0</b></div>
       <div>Letzte Runde <b id="sbLast">—</b></div>
       <div>Regel <b>Mail nur Entwurf</b></div>
+    </div>
+    </div><!-- /viewHome -->
+
+    <div class="view" id="viewMail" hidden>
+      <div class="ph"><h2>Posteingang</h2><span class="pill" id="mailCount">lädt …</span><span class="sp"></span><button class="btn" id="mailReload">Aktualisieren</button></div>
+      <div class="mailwrap card" id="mailwrap">
+        <div class="maillist" id="maillist"><div class="empty">Hole Mails …</div></div>
+        <div class="mailview" id="mailview"><div class="empty">Wähle links eine Mail.</div></div>
+      </div>
+    </div>
+
+    <div class="view" id="viewCal" hidden>
+      <div class="ph"><h2>Termine</h2><span class="pill" id="calRange">nächste 7 Tage</span><span class="sp"></span><button class="btn" id="calReload">Aktualisieren</button></div>
+      <div class="week" id="week"><div class="card empty">Hole Kalender …</div></div>
+    </div>
+
+    <div class="view" id="viewTask" hidden>
+      <div class="ph"><h2>Aufgaben</h2><span class="pill" id="taskCount">lädt …</span><span class="sp"></span><button class="btn" id="taskReload">Aktualisieren</button></div>
+      <div class="lists" id="lists"><div class="card empty">Hole Erinnerungen …</div></div>
+    </div>
+
+    <div class="view" id="viewHist" hidden>
+      <div class="ph"><h2>Verlauf</h2><span class="pill" id="histCount">—</span><span class="sp"></span><button class="btn" id="histClear">Verlauf löschen</button></div>
+      <div class="hist" id="hist"><div class="card empty">Noch keine Gespräche.</div></div>
     </div>
   </main>
 </div>
@@ -608,6 +715,7 @@
       : '<span class="txt">' + esc(text) + '</span>';
     div.innerHTML = '<span class="who">' + who + '</span>' + txt;
     bubbles.appendChild(div);
+    histAdd(who, text);
     while (bubbles.children.length > 40) bubbles.removeChild(bubbles.firstChild);
     bubbles.scrollTop = bubbles.scrollHeight;
   }
@@ -690,12 +798,119 @@
   micBtn.addEventListener("click", function () { if (session) sessionOff(); else sessionOn(); });
   document.addEventListener("keydown", function (e) { if (e.code === "Space" && e.target === document.body) { e.preventDefault(); if (session) sessionOff(); else sessionOn(); } });
 
-  /* ============ Navigation ============ */
-  $("nav").addEventListener("click", function (e) {
-    var a = e.target.closest("a"); if (!a) return;
-    var el = $(a.dataset.go); if (el) el.scrollIntoView({ behavior:"smooth", block:"start" });
-    Array.prototype.forEach.call($("nav").children, function (x) { x.classList.toggle("on", x === a); });
+  /* ============ Seiten ============ */
+  var PAGES = { home:"viewHome", mail:"viewMail", cal:"viewCal", task:"viewTask", hist:"viewHist" };
+  var page = "home", loaded = {};
+  function showPage(p) {
+    if (!PAGES[p]) p = "home";
+    page = p;
+    for (var k in PAGES) $(PAGES[k]).hidden = (k !== p);
+    document.querySelectorAll("#nav a, #mtabs a").forEach(function (a) { a.classList.toggle("on", a.dataset.page === p); });
+    try { history.replaceState(null, "", p === "home" ? location.pathname : "#" + p); } catch (e) {}
+    window.scrollTo(0, 0);
+    if (p === "home") { resize(); }
+    if (p === "mail" && !loaded.mail) loadMails();
+    if (p === "cal" && !loaded.cal) loadWeek();
+    if (p === "task" && !loaded.task) loadTasks();
+    if (p === "hist") renderHist();
+  }
+  document.addEventListener("click", function (e) {
+    var a = e.target.closest("[data-page]"); if (!a) return;
+    e.preventDefault(); showPage(a.dataset.page);
   });
+
+  /* ---- Posteingang ---- */
+  var mailsCache = [], selMail = null;
+  function loadMails() {
+    $("maillist").innerHTML = '<div class="empty">Hole Mails …</div>';
+    fetch("/api/mails").then(function (r) { return r.json(); }).then(function (d) {
+      if (!Array.isArray(d)) { $("maillist").innerHTML = '<div class="empty">Mail nicht erreichbar: ' + esc(d.error || "?") + '</div>'; return; }
+      loaded.mail = true; mailsCache = d;
+      var unread = d.filter(function (m) { return m.unread; }).length;
+      $("mailCount").textContent = unread ? unread + " ungelesen · " + d.length + " Mails" : d.length + " Mails";
+      $("mailCount").className = "pill" + (unread ? " new" : "");
+      $("maillist").innerHTML = d.map(function (m) {
+        return '<div class="mrow' + (m.unread ? ' unread' : '') + (selMail === m.id ? ' sel' : '') + '" data-id="' + m.id + '">' +
+          '<span class="f">' + esc(m.from) + '</span><span class="tm">' + esc(m.time) + '</span>' +
+          '<span class="s">' + esc(m.subject) + '</span><span class="sn">' + esc(m.snippet) + '</span></div>';
+      }).join("") || '<div class="empty">Posteingang leer.</div>';
+    }).catch(function () { $("maillist").innerHTML = '<div class="empty">Brücke nicht erreichbar.</div>'; });
+  }
+  $("maillist").addEventListener("click", function (e) {
+    var r = e.target.closest(".mrow"); if (!r) return;
+    selMail = r.dataset.id;
+    document.querySelectorAll(".mrow").forEach(function (x) { x.classList.toggle("sel", x === r); });
+    r.classList.remove("unread");
+    $("mailwrap").classList.add("show");
+    $("mailview").innerHTML = '<div class="empty">Lade Mail …</div>';
+    fetch("/api/mail?id=" + encodeURIComponent(selMail)).then(function (x) { return x.json(); }).then(function (m) {
+      if (m.error) { $("mailview").innerHTML = '<div class="empty">' + esc(m.error) + '</div>'; return; }
+      $("mailview").innerHTML = '<button class="btn back" id="mailBack">← Zurück</button>' +
+        '<h3>' + esc(m.subject) + '</h3>' +
+        '<div class="meta"><span>Von</span><b>' + esc(m.from) + '</b><span>An</span><span>' + esc(m.to) + '</span><span>Datum</span><span>' + esc(m.date) + '</span></div>' +
+        '<div class="body">' + esc(m.body || "(kein Text)") + '</div>';
+    }).catch(function () { $("mailview").innerHTML = '<div class="empty">Konnte die Mail nicht laden.</div>'; });
+  });
+  $("mailview").addEventListener("click", function (e) { if (e.target.id === "mailBack") $("mailwrap").classList.remove("show"); });
+  $("mailReload").addEventListener("click", loadMails);
+
+  /* ---- Termine (Woche) ---- */
+  function loadWeek() {
+    $("week").innerHTML = '<div class="card empty">Hole Kalender …</div>';
+    fetch("/api/events?days=7").then(function (r) { return r.json(); }).then(function (d) {
+      if (!Array.isArray(d)) { $("week").innerHTML = '<div class="card empty">Kalender nicht erreichbar: ' + esc(d.error || "?") + '</div>'; return; }
+      loaded.cal = true;
+      $("week").innerHTML = d.map(function (day, i) {
+        var evs = day.events.map(function (ev) {
+          return '<div class="ev' + (ev.past ? ' past' : '') + '"><span class="t">' + esc(ev.when) + (ev.until ? '–' + esc(ev.until) : '') + '</span>' +
+            '<span><span class="ttl">' + esc(ev.title) + '</span>' + (ev.location ? '<div class="loc">' + esc(ev.location) + '</div>' : '') + '</span>' +
+            (ev.allday ? '<span class="pill">ganztags</span>' : (i === 0 && !ev.past ? '<span class="pill hi">heute</span>' : (ev.past ? '<span class="pill">vorbei</span>' : '<span></span>'))) + '</div>';
+        }).join("") || '<div class="free">frei</div>';
+        return '<div class="card day' + (i === 0 ? ' today' : '') + '"><header><h3>' + esc(day.label) + '</h3><span class="sub">' + esc(day.sub) + '</span></header>' + evs + '</div>';
+      }).join("");
+    }).catch(function () { $("week").innerHTML = '<div class="card empty">Brücke nicht erreichbar.</div>'; });
+  }
+  $("calReload").addEventListener("click", loadWeek);
+
+  /* ---- Aufgaben (nach Liste) ---- */
+  function loadTasks() {
+    $("lists").innerHTML = '<div class="card empty">Hole Erinnerungen …</div>';
+    fetch("/api/reminders").then(function (r) { return r.json(); }).then(function (d) {
+      if (!Array.isArray(d)) { $("lists").innerHTML = '<div class="card empty">Erinnerungen gesperrt oder nicht erreichbar: ' + esc(d.error || "?") + '</div>'; return; }
+      loaded.task = true;
+      var total = d.reduce(function (n, l) { return n + l.items.length; }, 0);
+      $("taskCount").textContent = total ? total + " offen" : "nichts offen";
+      $("lists").innerHTML = d.map(function (l) {
+        return '<div class="card lst"><h3>' + esc(l.list) + ' <span class="pill">' + l.items.length + '</span></h3>' +
+          l.items.map(function (t) { return '<div class="task"><span class="cb"></span><span>' + esc(t.name) + (t.due ? '<span class="due">fällig ' + esc(t.due) + '</span>' : '') + '</span></div>'; }).join("") + '</div>';
+      }).join("") || '<div class="card empty">Alles erledigt.</div>';
+    }).catch(function () { $("lists").innerHTML = '<div class="card empty">Brücke nicht erreichbar.</div>'; });
+  }
+  $("taskReload").addEventListener("click", loadTasks);
+
+  /* ---- Verlauf (im Browser gespeichert) ---- */
+  var HIST_KEY = "jarvisHistory";
+  function histLoad() { try { return JSON.parse(localStorage.getItem(HIST_KEY) || "[]"); } catch (e) { return []; } }
+  function histAdd(who, text) {
+    try { var h = histLoad(); h.push({ t:Date.now(), who:who, text:text }); if (h.length > 600) h = h.slice(-600); localStorage.setItem(HIST_KEY, JSON.stringify(h)); } catch (e) {}
+  }
+  function renderHist() {
+    var h = histLoad();
+    $("histCount").textContent = h.length ? Math.ceil(h.length / 2) + " Runden" : "—";
+    if (!h.length) { $("hist").innerHTML = '<div class="card empty">Noch keine Gespräche. Sprich auf der Übersicht mit Jarvis — alles landet hier.</div>'; return; }
+    var days = {}, order = [];
+    h.forEach(function (x) { var d = new Date(x.t), k = d.toDateString(); if (!days[k]) { days[k] = { d:d, items:[] }; order.push(k); } days[k].items.push(x); });
+    order.reverse();
+    $("hist").innerHTML = order.map(function (k) {
+      var day = days[k], d = day.d;
+      var lbl = d.toDateString() === new Date().toDateString() ? "Heute" : TAGE[d.getDay()] + ", " + d.getDate() + ". " + MON[d.getMonth()];
+      return '<div class="card hday"><h3>' + lbl + '</h3>' + day.items.map(function (x) {
+        var t = new Date(x.t);
+        return '<div class="line ' + (x.who === "Jarvis" ? 'j' : 'me') + '"><span class="who">' + esc(x.who) + '<span class="ts">' + pad(t.getHours()) + ':' + pad(t.getMinutes()) + '</span></span><span class="txt">' + esc(x.text) + '</span></div>';
+      }).join("") + '</div>';
+    }).join("");
+  }
+  $("histClear").addEventListener("click", function () { try { localStorage.removeItem(HIST_KEY); } catch (e) {} renderHist(); });
 
   /* ============ Uhr, Datum, Begrüssung, Pegel ============ */
   function pad(n) { return n < 10 ? "0"+n : ""+n; }
@@ -763,6 +978,8 @@
   window.JARVIS = { setJarvisState:setState, updateTranscript:function (t) { addLine("Jarvis", t, true); }, setTheme:function (m) { themeMode = m; refreshTheme(); } };
   window.addEventListener("resize", resize);
   resize(); setState("idle"); requestAnimationFrame(frame);
+  showPage((location.hash || "#home").slice(1));
+  window.addEventListener("hashchange", function () { showPage((location.hash || "#home").slice(1)); });
 })();
 </script>
 </body>
