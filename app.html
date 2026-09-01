@@ -762,14 +762,17 @@
   var SUB_CONT = "";
   var session = false, busy = false, rounds = 0;
   var recorder = null, chunks = [], micStream = null;
-  var vad = { speech:false, onset:0, silence:0, cool:0, started:0, peak:0, loud:0 };
+  var vad = { speech:false, onset:0, silence:0, cool:0, started:0, peak:0, loud:0, bg:.02, maxSeen:0, hist:[], tick:0 };
   /* Regler für die Spracherkennung — hier lässt sich nachjustieren */
   var VAD = {
-    onLevel:  .18,   /* so laut muss es sein, damit er anfängt aufzunehmen */
-    onTicks:  4,     /* … und das 4 Messungen lang (0,4 s) — kurze Klicks lösen nichts aus */
+    onLevel:  .22,   /* so laut muss es mindestens sein, damit er anfängt aufzunehmen */
+    onOverBg: 1.8,   /* … und mindestens 1,8-mal so laut wie der Raum gerade ist */
+    onTicks:  4,     /* … und das 0,4 s lang — kurze Klicks lösen nichts aus */
+    minPeak:  .30,   /* war die ganze Aufnahme leiser: war nicht Mika → verwerfen */
     quietRel: .30,   /* "still" = leiser als 30 % deiner eigenen Sprechlautstärke */
+    quietBg:  1.25,  /* … oder wieder auf Raumpegel zurück (× dieser Wert) */
     quietMin: .09,   /* … aber nie unter diesem Grundwert */
-    offTicks: 8,     /* 0,8 s still → Aufnahme fertig */
+    offTicks: 11,    /* 1,1 s still → Aufnahme fertig (Denkpausen im Satz bleiben drin) */
     maxMs:    25000  /* Notbremse: nie länger als 25 s am Stück aufnehmen */
   };
 
@@ -811,15 +814,26 @@
     if (!session || busy || current !== "listening") return;
     if (vad.cool > 0) { vad.cool--; return; }
     var v = audio.fast;
+    /* Raumpegel = leises Fünftel der letzten 6 Sekunden. Erfasst auch Dauergeräusche
+       (Fernseher, Lüftung, Gespräch nebenan), egal ob gerade aufgenommen wird. */
+    vad.hist.push(v); if (vad.hist.length > 100) vad.hist.shift();
+    if (++vad.tick % 5 === 0 && vad.hist.length > 20) {
+      var srt = vad.hist.slice().sort(function (a, b) { return a - b; });
+      vad.bg = srt[Math.floor(srt.length * .10)] || 0;
+    }
     if (!vad.speech) {
-      if (v > VAD.onLevel) {
+      var need = Math.max(VAD.onLevel, vad.bg * VAD.onOverBg);
+      if (v > need) {
         vad.onset++;
-        if (vad.onset >= VAD.onTicks) { vad.speech = true; vad.silence = 0; vad.loud = 0; vad.peak = v; beginCapture(); }
+        if (vad.onset >= VAD.onTicks) {
+          vad.speech = true; vad.silence = 0; vad.loud = 0; vad.peak = v; vad.maxSeen = v; beginCapture();
+        }
       } else vad.onset = 0;
     } else {
+      if (v > vad.maxSeen) vad.maxSeen = v;
       if (v > vad.peak) vad.peak = v;
       vad.peak *= .995;                                     /* Spitze verfällt langsam */
-      var quiet = Math.max(VAD.quietMin, vad.peak * VAD.quietRel);
+      var quiet = Math.max(VAD.quietMin, Math.min(vad.bg, vad.peak * .5) * VAD.quietBg, vad.peak * VAD.quietRel);
       if (v < quiet) { vad.loud = 0; vad.silence++; }
       else {
         vad.loud++;
@@ -836,6 +850,11 @@
     var blob = new Blob(chunks, { type:"audio/webm" });
     var durMs = Date.now()-vad.started;
     if (blob.size < 3000 || durMs < 500) { resumeListen(); return; }
+    /* Nahfeld-Prüfung: war zu leise / zu weit weg → war nicht Mika, still verwerfen */
+    if (vad.maxSeen < VAD.minPeak) {
+      if (window.console) console.log("[Jarvis] verworfen — zu leise (Aufnahme " + vad.maxSeen.toFixed(2) + ", Raumpegel " + vad.bg.toFixed(2) + "), vermutlich Hintergrund");
+      resumeListen(); return;
+    }
     busy = true; setState("processing");
     var t0 = Date.now();
     fetch("/api/talk", { method:"POST", body:blob })
