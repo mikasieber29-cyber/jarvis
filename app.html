@@ -66,13 +66,14 @@
   .chip b { color:var(--ink); font-weight:600; font-variant-numeric:tabular-nums; }
   .chip .big { font-family:"Inter Tight",sans-serif; font-size:18px; font-weight:700; color:var(--ink); letter-spacing:.01em; }
 
-  .hero { position:relative; display:flex; flex-direction:column; align-items:center; gap:6px; background:var(--card); border:1px solid var(--line); border-radius:16px; padding:18px 24px 78px; box-shadow:var(--shadow); }
+  .hero { position:relative; display:flex; flex-direction:column; align-items:center; gap:6px; background:var(--card); border:1px solid var(--line); border-radius:16px; padding:18px 24px 22px; box-shadow:var(--shadow); }
   .heart { position:relative; display:flex; flex-direction:column; align-items:center; gap:2px; background:var(--halo); border-radius:16px; }
   #rc { width:440px; height:440px; display:block; }
-  .state { font-family:"Inter Tight",sans-serif; font-weight:700; letter-spacing:.24em; font-size:12px; color:var(--acc); text-transform:uppercase; text-align:right; }
+  .state { font-family:"Inter Tight",sans-serif; font-weight:700; letter-spacing:.16em; font-size:11.5px; color:var(--acc); text-transform:uppercase; text-align:right; white-space:nowrap; }
   .state.warn { color:var(--warn); }
   .state.ok { color:var(--ok); }
-  .statesub { font-size:12.5px; color:var(--ink2); text-align:right; min-height:18px; max-width:340px; margin-top:2px; }
+  .statesub { font-size:13px; color:var(--warn); text-align:center; max-width:60ch; padding:2px 10px 6px; }
+  .statesub[hidden] { display:none; }
 
   .talk { min-width:0; width:100%; max-width:680px; display:flex; flex-direction:column; align-items:center; gap:10px; }
   .talk .bubbles { display:none; }
@@ -101,7 +102,9 @@
   @keyframes wIn { to { opacity:1; } }
   @keyframes lineIn { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:none; } }
 
-  .microw { position:absolute; right:22px; bottom:18px; display:flex; flex-direction:row-reverse; align-items:center; gap:14px; font-size:13px; color:var(--ink2); text-align:right; }
+  .miccluster { display:flex; align-items:center; gap:12px; padding-left:6px; }
+  .micstate { display:flex; flex-direction:column; align-items:flex-end; gap:5px; }
+  .srclbl { display:none; }
   .mic { width:54px; height:54px; border-radius:50%; border:none; background:var(--acc); color:var(--onacc); display:grid; place-items:center; cursor:pointer; box-shadow:0 8px 22px -6px var(--acc); transition:transform .15s; flex:0 0 auto; }
   .mic:hover { transform:scale(1.05); }
   .mic:focus-visible { outline:3px solid var(--accline); outline-offset:2px; }
@@ -109,7 +112,7 @@
   .mic.live { animation:micPulse 1.6s ease-in-out infinite; }
   @keyframes micPulse { 50% { box-shadow:0 0 0 10px var(--accsoft); } }
   .microw .hint b { color:var(--ink); font-weight:600; }
-  .lvl { width:90px; height:4px; background:var(--pill); border-radius:2px; overflow:hidden; }
+  .lvl { width:64px; height:3px; background:var(--pill); border-radius:2px; overflow:hidden; }
   .lvl i { display:block; height:100%; width:0; background:var(--acc); transition:width .1s; }
   .srclbl { font-family:"Share Tech Mono",monospace; font-size:10.5px; letter-spacing:.16em; color:var(--ink3); }
 
@@ -233,8 +236,9 @@
     .talk h1 { font-size:22px; }
     .bubbles { max-height:200px; }
     .sections { grid-template-columns:1fr; }
-    .microw { position:fixed; left:0; right:0; bottom:0; z-index:6; background:var(--card); border-top:1px solid var(--line); padding:10px 16px calc(10px + env(safe-area-inset-bottom)); justify-content:center; flex-direction:row; text-align:left; }
-    .state, .statesub { text-align:left; }
+    .miccluster { position:fixed; left:0; right:0; bottom:0; z-index:6; background:var(--card); border-top:1px solid var(--line); padding:10px 16px calc(10px + env(safe-area-inset-bottom)); justify-content:center; gap:14px; }
+    .micstate { align-items:flex-start; }
+    .state { text-align:left; }
     .statesub { max-width:none; }
     .mic { width:60px; height:60px; }
     .statusbar { display:none; }
@@ -290,6 +294,14 @@
         <div class="chip"><span class="big" id="bigClock">--:--</span></div>
         <div class="chip" id="wxChip"><b id="wxTemp">—°</b><span id="wxLine">Wetter lädt …</span><span id="wxCity" style="color:var(--ink3)"></span></div>
         <div class="chip"><span>Antwort</span><b id="lat">—</b></div>
+        <div class="miccluster">
+          <div class="micstate"><span class="state" id="stateName">Bereit</span><span class="lvl"><i id="bVol"></i></span><span class="srclbl" id="audioSrc">BEREIT</span></div>
+          <button class="mic" id="micBtn" aria-label="Gespräch starten/stoppen" aria-pressed="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+              <rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/>
+            </svg>
+          </button>
+        </div>
       </div>
     </div>
 
@@ -297,21 +309,10 @@
       <div class="heart">
         <canvas id="rc" aria-label="Jarvis-Energieform, reagiert live auf das Gespräch"></canvas>
       </div>
-      <div class="talk">
+      <div class="statesub" id="stateSub" hidden></div>
+      <div class="talk" hidden>
         <h1 id="greet">Guten Tag, Chef.</h1>
         <p class="sub" id="summary">Ich hole gerade Mails, Termine und Aufgaben …</p>
-        <div class="microw">
-          <button class="mic" id="micBtn" aria-label="Gespräch starten/stoppen" aria-pressed="false">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
-              <rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/>
-            </svg>
-          </button>
-          <div>
-            <div class="state" id="stateName">Bereit</div>
-            <div class="statesub" id="stateSub">Ein Klick auf den Knopf — dann einfach reden</div>
-            <div style="display:flex; align-items:center; justify-content:flex-end; gap:10px; margin-top:6px;"><span class="srclbl" id="audioSrc">BEREIT</span><span class="lvl"><i id="bVol"></i></span></div>
-          </div>
-        </div>
       </div>
     </div>
 
@@ -383,11 +384,11 @@
 
   /* ============ Zustände ============ */
   var STATES = {
-    idle:       { name:"Bereit",          sub:"Ein Klick auf den Knopf (oder Leertaste) — dann einfach reden", cls:"",   spin:.05, expand:1.00, glow:.82, impulses:.25, contract:0, jitter:0 },
-    listening:  { name:"Ich höre zu …",   sub:"sprich einfach — ich merke, wenn du fertig bist",             cls:"",     spin:.03, expand:1.07, glow:1.0,  impulses:.5,  contract:0, jitter:0 },
-    processing: { name:"Ich denke …",     sub:"Hermes arbeitet — Werkzeuge können etwas dauern",             cls:"warm", spin:.22, expand:.93,  glow:.9,   impulses:2.6, contract:1, jitter:0 },
-    speaking:   { name:"Jarvis spricht",  sub:"Helmut · ElevenLabs",                                         cls:"",     spin:.09, expand:1.02, glow:1.05, impulses:.9,  contract:0, jitter:0 },
-    success:    { name:"Erledigt",        sub:"bereit für die nächste Frage",                                cls:"ok",   spin:.05, expand:1.0,  glow:.95,  impulses:.3,  contract:0, jitter:0 },
+    idle:       { name:"Bereit",          sub:"", cls:"",   spin:.05, expand:1.00, glow:.82, impulses:.25, contract:0, jitter:0 },
+    listening:  { name:"Ich höre zu …",   sub:"",             cls:"",     spin:.03, expand:1.07, glow:1.0,  impulses:.5,  contract:0, jitter:0 },
+    processing: { name:"Ich denke …",     sub:"",             cls:"warm", spin:.22, expand:.93,  glow:.9,   impulses:2.6, contract:1, jitter:0 },
+    speaking:   { name:"Jarvis spricht",  sub:"",                                         cls:"",     spin:.09, expand:1.02, glow:1.05, impulses:.9,  contract:0, jitter:0 },
+    success:    { name:"Erledigt",        sub:"",                                cls:"ok",   spin:.05, expand:1.0,  glow:.95,  impulses:.3,  contract:0, jitter:0 },
     error:      { name:"Das hat nicht geklappt", sub:"",                                                     cls:"warm", spin:.05, expand:.97,  glow:.55,  impulses:.4,  contract:0, jitter:1 }
   };
   var current = "idle";
@@ -737,6 +738,7 @@
     T.warm = key === "error" ? 1 : (key === "processing" ? .35 : 0);
     nameEl.textContent = st.name; nameEl.className = "state " + st.cls;
     subEl.textContent = subOverride || st.sub;
+    subEl.hidden = !subEl.textContent;
     sb1.textContent = st.name; sb1.className = st.cls === "warn" ? "warn" : "";
     if (key === "success") { spawnImpulse(2.2,0,1.6); autoTimer = setTimeout(function () { setState("idle"); }, 2200); }
     if (key === "error")   { spawnImpulse(1.6,1,1.2); autoTimer = setTimeout(function () { setState("idle"); }, 4200); }
@@ -757,7 +759,7 @@
 
   /* ============ Gesprächs-Schleife: einmal an, dann freies Reden ============ */
   var micBtn = $("micBtn"), latEl = $("lat"), sbCount = $("sbCount"), sbLast = $("sbLast"), audioSrcEl = $("audioSrc");
-  var SUB_CONT = "sprich einfach — ich merke, wenn du fertig bist";
+  var SUB_CONT = "";
   var session = false, busy = false, rounds = 0;
   var recorder = null, chunks = [], micStream = null;
   var vad = { speech:false, onset:0, silence:0, cool:0, started:0, peak:0, loud:0 };
