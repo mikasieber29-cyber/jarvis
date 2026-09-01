@@ -396,7 +396,7 @@
 
   /* ============ Audio-Analyse (Mikrofon UND Helmuts Stimme) ============ */
   var audio = {
-    vol:0, bass:0, mid:0, high:0, raw:{ vol:0, bass:0, mid:0, high:0 }, attack:.45, release:.07, sens:1.5,
+    vol:0, bass:0, mid:0, high:0, fast:0, raw:{ vol:0, bass:0, mid:0, high:0 }, attack:.45, release:.07, sens:1.5,
     ac:null, analyser:null, fdata:null, source:null,
     ctx: function () { if (!this.ac) this.ac = new (window.AudioContext || window.webkitAudioContext)(); if (this.ac.state === "suspended") this.ac.resume(); return this.ac; },
     attachStream: function (stream) { var ac = this.ctx(); this.detach(); this.source = ac.createMediaStreamSource(stream); this.analyser = ac.createAnalyser(); this.analyser.fftSize = 256; this.source.connect(this.analyser); this.fdata = new Uint8Array(this.analyser.frequencyBinCount); },
@@ -416,6 +416,9 @@
       } else { this.raw.vol *= .9; this.raw.bass *= .9; this.raw.mid *= .9; this.raw.high *= .9; }
       var s = this;
       ["vol","bass","mid","high"].forEach(function (ch) { var r = s.raw[ch], c = s[ch]; s[ch] = c + (r - c) * (r > c ? s.attack : s.release); });
+      /* zweiter Pegel, der schnell wieder abfällt — nur für die Spracherkennung */
+      var rv = this.raw.vol;
+      this.fast = rv > this.fast ? rv : this.fast + (rv - this.fast) * .45;
     }
   };
 
@@ -757,7 +760,16 @@
   var SUB_CONT = "sprich einfach — ich merke, wenn du fertig bist";
   var session = false, busy = false, rounds = 0;
   var recorder = null, chunks = [], micStream = null;
-  var vad = { speech:false, onset:0, silence:0, cool:0, started:0 };
+  var vad = { speech:false, onset:0, silence:0, cool:0, started:0, peak:0, loud:0 };
+  /* Regler für die Spracherkennung — hier lässt sich nachjustieren */
+  var VAD = {
+    onLevel:  .18,   /* so laut muss es sein, damit er anfängt aufzunehmen */
+    onTicks:  4,     /* … und das 4 Messungen lang (0,4 s) — kurze Klicks lösen nichts aus */
+    quietRel: .30,   /* "still" = leiser als 30 % deiner eigenen Sprechlautstärke */
+    quietMin: .09,   /* … aber nie unter diesem Grundwert */
+    offTicks: 8,     /* 0,8 s still → Aufnahme fertig */
+    maxMs:    25000  /* Notbremse: nie länger als 25 s am Stück aufnehmen */
+  };
 
   function sessionOn() {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -796,9 +808,26 @@
   setInterval(function () {
     if (!session || busy || current !== "listening") return;
     if (vad.cool > 0) { vad.cool--; return; }
-    var v = audio.vol;
-    if (!vad.speech) { if (v > .16) { vad.onset++; if (vad.onset >= 3) { vad.speech = true; vad.silence = 0; beginCapture(); } } else vad.onset = 0; }
-    else { if (v < .07) { vad.silence++; if (vad.silence >= 9) { vad.speech = false; endCapture(); } } else vad.silence = 0; }
+    var v = audio.fast;
+    if (!vad.speech) {
+      if (v > VAD.onLevel) {
+        vad.onset++;
+        if (vad.onset >= VAD.onTicks) { vad.speech = true; vad.silence = 0; vad.loud = 0; vad.peak = v; beginCapture(); }
+      } else vad.onset = 0;
+    } else {
+      if (v > vad.peak) vad.peak = v;
+      vad.peak *= .995;                                     /* Spitze verfällt langsam */
+      var quiet = Math.max(VAD.quietMin, vad.peak * VAD.quietRel);
+      if (v < quiet) { vad.loud = 0; vad.silence++; }
+      else {
+        vad.loud++;
+        /* nur anhaltender Ton zählt als Weiterreden; einzelne Klicks (Tastatur, Maus) nicht */
+        if (vad.loud >= 2) vad.silence = Math.max(0, vad.silence - 1); else vad.silence++;
+      }
+      if (vad.silence >= VAD.offTicks || Date.now() - vad.started > VAD.maxMs) {
+        vad.speech = false; endCapture();
+      }
+    }
   }, 100);
 
   function sendTalk() {
