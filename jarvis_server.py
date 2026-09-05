@@ -146,9 +146,15 @@ def helmut_speaks(text):
 
 GOOGLE_TOKEN = os.path.join(HOME, ".hermes", "google_token.json")
 CITY = "Zürich"          # fürs Wetter — auf Wunsch anpassen
+WORK_START, WORK_END = 8, 18     # Zeitfenster, in dem freie Lücken gesucht werden
+GAP_MIN = 45                     # kürzere Lücken als das interessieren nicht
+WAIT_DAYS = 2                    # Mails, die so lange auf Antwort warten
+FOLLOW_DAYS = 7                  # eigene Mails ohne Antwort seit so vielen Tagen
 _geo = {}
 _dash = {"t": 0, "data": None}
 _rem = {"t": 0, "data": None}
+_follow = {"t": 0, "data": None}
+_quota = {"t": 0, "data": None}
 
 
 def google_creds():
@@ -206,8 +212,46 @@ def fetch_events(creds):
             when, allday = "ganztags", True
         day = "heute" if dt.date() == now.date() else "morgen"
         out.append({"title": ev.get("summary", "(ohne Titel)")[:44], "when": when,
-                    "day": day, "allday": allday})
+                    "day": day, "allday": allday, "iso": dt.isoformat()})
     return out
+
+
+def free_gaps(creds, days=2):
+    """Freie Blöcke von mindestens GAP_MIN Minuten innerhalb der Arbeitszeit."""
+    now = datetime.datetime.now().astimezone()
+    start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    t0 = urllib.parse.quote(start.isoformat())
+    t1 = urllib.parse.quote((start + datetime.timedelta(days=days)).isoformat())
+    url = ("https://www.googleapis.com/calendar/v3/calendars/primary/events"
+           f"?timeMin={t0}&timeMax={t1}&singleEvents=true&orderBy=startTime&maxResults=60")
+    busy = []
+    for ev in gapi(creds, url).get("items", []):
+        st, en = ev.get("start", {}), ev.get("end", {})
+        if "dateTime" not in st or "dateTime" not in en:
+            continue                                    # ganztägige Einträge blockieren nicht
+        if (ev.get("transparency") == "transparent"):
+            continue                                    # "frei" markierte Termine zählen nicht
+        busy.append((datetime.datetime.fromisoformat(st["dateTime"]).astimezone(),
+                     datetime.datetime.fromisoformat(en["dateTime"]).astimezone()))
+    busy.sort()
+    out = []
+    for d in range(days):
+        day0 = (start + datetime.timedelta(days=d)).replace(hour=WORK_START)
+        day1 = (start + datetime.timedelta(days=d)).replace(hour=WORK_END)
+        cur = max(day0, now) if d == 0 else day0
+        if cur >= day1:
+            continue
+        for b0, b1 in busy:
+            if b1 <= cur or b0 >= day1:
+                continue
+            if b0 - cur >= datetime.timedelta(minutes=GAP_MIN):
+                out.append((cur, min(b0, day1)))
+            cur = max(cur, b1)
+        if day1 - cur >= datetime.timedelta(minutes=GAP_MIN):
+            out.append((cur, day1))
+    return [{"day": "heute" if a.date() == now.date() else "morgen",
+             "from": a.strftime("%H:%M"), "to": b.strftime("%H:%M"),
+             "min": int((b - a).total_seconds() // 60)} for a, b in out[:6]]
 
 
 def fetch_weather():
@@ -221,13 +265,29 @@ def fetch_weather():
     w = json.loads(urllib.request.urlopen(
         f"https://api.open-meteo.com/v1/forecast?latitude={_geo['lat']}"
         f"&longitude={_geo['lon']}&current_weather=true"
-        "&daily=temperature_2m_max,temperature_2m_min&timezone=auto", timeout=10).read())
+        "&daily=temperature_2m_max,temperature_2m_min"
+        "&hourly=precipitation_probability&forecast_days=2&timezone=auto", timeout=10).read())
     code = w["current_weather"]["weathercode"]
     txt = ("klar" if code == 0 else "leicht bewölkt" if code <= 2 else "bewölkt" if code == 3
            else "Nebel" if code in (45, 48) else "Regen" if code < 70 else "Schnee" if code < 80
            else "Schauer" if code < 90 else "Gewitter")
+    rain = None
+    try:
+        now = datetime.datetime.now()
+        times = w["hourly"]["time"]
+        probs = w["hourly"]["precipitation_probability"]
+        for tstr, pr in zip(times, probs):
+            h = datetime.datetime.fromisoformat(tstr)
+            if h < now or (h - now).total_seconds() > 12 * 3600:
+                continue
+            if pr is not None and pr >= 60:
+                mins = int((h - now).total_seconds() // 60)
+                rain = {"at": h.strftime("%H:%M"), "prob": pr, "in_min": mins}
+                break
+    except Exception:
+        rain = None
     return {"city": _geo["name"], "temp": round(w["current_weather"]["temperature"]),
-            "desc": txt,
+            "desc": txt, "rain": rain,
             "max": round(w["daily"]["temperature_2m_max"][0]),
             "min": round(w["daily"]["temperature_2m_min"][0])}
 
@@ -264,7 +324,12 @@ def build_dashboard():
         data["weather"] = fetch_weather()
     except Exception as e:
         data["weather"] = {"error": str(e)[:120]}
+    try:
+        data["gaps"] = free_gaps(creds) if creds else {"error": "Google-Zugang fehlt"}
+    except Exception as e:
+        data["gaps"] = {"error": str(e)[:120]}
     data["reminders"] = fetch_reminders()
+    data["quota"] = fetch_quota()
     _dash.update(t=time.time(), data=data)
     return data
 
@@ -471,6 +536,91 @@ def complete_reminder(list_name, name):
     return {"ok": ok, "error": None if ok else "Erinnerung nicht gefunden (schon erledigt?)"}
 
 
+# ---------------------------------------------------------------- Wartet auf dich / Nachfassen
+
+def _me(creds):
+    """Eigene Mailadresse (einmal holen, dann gemerkt)."""
+    if not hasattr(_me, "addr"):
+        try:
+            _me.addr = gapi(creds, "https://gmail.googleapis.com/gmail/v1/users/me/profile").get("emailAddress", "").lower()
+        except Exception:
+            _me.addr = ""
+    return _me.addr
+
+
+def _thread_summary(creds, tid, me):
+    """Letzte Nachricht eines Gesprächs: von wem, wann, worum."""
+    t = gapi(creds, "https://gmail.googleapis.com/gmail/v1/users/me/threads/" + tid +
+             "?format=metadata&metadataHeaders=From&metadataHeaders=Subject")
+    msgs = t.get("messages", [])
+    if not msgs:
+        return None
+    last = msgs[-1]
+    hdr = {h["name"]: h["value"] for h in last.get("payload", {}).get("headers", [])}
+    raw_from = hdr.get("From", "")
+    from_me = me and me in raw_from.lower()
+    ts = int(last.get("internalDate", "0")) / 1000
+    when = datetime.datetime.fromtimestamp(ts).astimezone()
+    days = max(0, (datetime.datetime.now().astimezone() - when).days)
+    who = raw_from.split("<")[0].strip().strip('"') or raw_from
+    return {"id": msgs[0]["id"], "thread": tid, "from_me": bool(from_me),
+            "who": who[:40], "subject": hdr.get("Subject", "(kein Betreff)")[:90],
+            "days": days, "date": when.strftime("%d.%m."), "snippet": (last.get("snippet") or "")[:120]}
+
+
+def _threads(creds, q, n):
+    url = ("https://gmail.googleapis.com/gmail/v1/users/me/threads?maxResults=" + str(n)
+           + "&q=" + urllib.parse.quote(q))
+    return [t["id"] for t in gapi(creds, url).get("threads", [])]
+
+
+def fetch_followups(creds):
+    """Zwei Listen: Gespraeche, die auf DICH warten — und solche, wo DU wartest."""
+    if time.time() - _follow["t"] < 600 and _follow["data"] is not None:
+        return _follow["data"]
+    me = _me(creds)
+    waiting, follow = [], []
+    try:
+        for tid in _threads(creds, f"in:inbox older_than:{WAIT_DAYS}d newer_than:45d -category:promotions -category:social", 18):
+            s = _thread_summary(creds, tid, me)
+            if s and not s["from_me"]:
+                waiting.append(s)
+    except Exception as e:
+        waiting = {"error": str(e)[:120]}
+    try:
+        for tid in _threads(creds, f"from:me older_than:{FOLLOW_DAYS}d newer_than:70d", 18):
+            s = _thread_summary(creds, tid, me)
+            if s and s["from_me"]:
+                follow.append(s)
+    except Exception as e:
+        follow = {"error": str(e)[:120]}
+    if isinstance(waiting, list):
+        waiting.sort(key=lambda x: -x["days"]); waiting = waiting[:8]
+    if isinstance(follow, list):
+        follow.sort(key=lambda x: -x["days"]); follow = follow[:8]
+    data = {"waiting": waiting, "followup": follow}
+    _follow.update(t=time.time(), data=data)
+    return data
+
+
+def fetch_quota():
+    """Wie viel Stimm-Kontingent bei ElevenLabs diesen Monat noch uebrig ist."""
+    if time.time() - _quota["t"] < 900 and _quota["data"] is not None:
+        return _quota["data"]
+    out = None
+    try:
+        req = urllib.request.Request("https://api.elevenlabs.io/v1/user/subscription",
+                                     headers={"xi-api-key": ELEVEN_KEY})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            d = json.loads(r.read())
+        used, lim = d.get("character_count", 0), d.get("character_limit", 0) or 1
+        out = {"used": used, "limit": lim, "left_pct": max(0, round(100 - used * 100.0 / lim))}
+    except Exception as e:
+        out = {"error": str(e)[:80]}
+    _quota.update(t=time.time(), data=out)
+    return out
+
+
 # ---------------------------------------------------------------- HTTP-Server
 
 class Handler(BaseHTTPRequestHandler):
@@ -519,6 +669,8 @@ class Handler(BaseHTTPRequestHandler):
             q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
             days = max(1, min(14, int((q.get("days") or ["7"])[0])))
             self._json_call(lambda c: fetch_week(c, days))
+        elif self.path.startswith("/api/followups"):
+            self._json_call(lambda c: fetch_followups(c))
         elif self.path.startswith("/api/reminders"):
             try:
                 self._send(200, json.dumps(fetch_reminders_all()).encode())

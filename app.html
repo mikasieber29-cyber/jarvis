@@ -215,6 +215,35 @@
   /* Handy-Reiter */
   .mtabs { display:none; }
 
+  /* ---------- Hinweisleiste: was jetzt wichtig ist ---------- */
+  .cues { display:flex; gap:10px; flex-wrap:wrap; }
+  .cue { display:flex; align-items:center; gap:10px; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:9px 14px; font-size:13px; color:var(--ink2); cursor:pointer; text-align:left; font-family:inherit; transition:border-color .18s, background .18s; }
+  .cue:hover { border-color:var(--accline); background:var(--accsoft); }
+  .cue:focus-visible { outline:2px solid var(--accline); outline-offset:2px; }
+  .cue[hidden] { display:none; }
+  .cue .ic { font-size:14px; color:var(--acc); }
+  .cue b { color:var(--ink); font-weight:600; }
+  .cue .sub { color:var(--ink3); }
+  .cue.soon { border-color:var(--acc); }
+  .cue.soon .ic, .cue.soon b { color:var(--acc); }
+  .cues:empty { display:none; }
+
+  /* ---------- Mail-Abschnitte auf der Posteingang-Seite ---------- */
+  .mailtop { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+  @media (max-width:900px) { .mailtop { grid-template-columns:1fr; } }
+  .mailtop section { padding:12px 16px; }
+  .trow { display:grid; grid-template-columns:1fr auto; gap:2px 10px; padding:9px 0; border-top:1px solid var(--line); cursor:pointer; }
+  .trow:first-of-type { border-top:none; }
+  .trow:hover { background:var(--bub); }
+  .trow .s { font-weight:600; font-size:13.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .trow .w { grid-column:1; font-size:12px; color:var(--ink2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .trow .age { font-family:"IBM Plex Mono","Share Tech Mono",monospace; font-size:11px; color:var(--ink3); white-space:nowrap; align-self:start; }
+  .trow .age.old { color:var(--acc); }
+
+  /* ---------- Kontingent in der Seitenleiste ---------- */
+  .quota { height:3px; background:var(--pill); border-radius:2px; overflow:hidden; margin:2px 10px 0; }
+  .quota i { display:block; height:100%; background:var(--acc); }
+
   /* ---------- Handy-Kopfzeile (nur klein) ---------- */
   .mbar { display:none; }
 
@@ -271,7 +300,8 @@
     </nav>
     <div class="sb-foot">
       <div class="kv btn" id="themeBtn" title="Klick: Auto / Tag / Abend"><span>Stil</span><b id="themeLbl">Auto</b></div>
-      <div class="kv"><span>Stimme</span><b>Helmut</b></div>
+      <div class="kv"><span>Stimme</span><b id="voiceQ">Helmut</b></div>
+      <div class="quota" id="quotaBar" hidden><i></i></div>
       <div class="kv"><span>Gehirn</span><b>Hermes</b></div>
       <div class="kv"><span><i class="live wait" id="bridgeDot"></i>Brücke</span><b id="bridge">prüfe …</b></div>
     </div>
@@ -303,6 +333,14 @@
           </button>
         </div>
       </div>
+    </div>
+
+    <div class="cues" id="cues">
+      <button class="cue" id="cueNext" hidden></button>
+      <button class="cue" id="cueWait" hidden></button>
+      <button class="cue" id="cueFollow" hidden></button>
+      <button class="cue" id="cueGap" hidden></button>
+      <button class="cue" id="cueRain" hidden></button>
     </div>
 
     <div class="hero">
@@ -351,6 +389,16 @@
 
     <div class="view" id="viewMail" hidden>
       <div class="ph"><h2>Posteingang</h2><span class="pill" id="mailCount">lädt …</span><span class="sp"></span><button class="btn" id="mailReload">Aktualisieren</button></div>
+      <div class="mailtop">
+        <section id="secWait">
+          <header><h3>Wartet auf dich</h3><span class="pill" id="waitN">lädt …</span><span class="more">seit über 2 Tagen</span></header>
+          <div id="waitRows"><div class="empty">Suche …</div></div>
+        </section>
+        <section id="secFollow">
+          <header><h3>Nachfassen</h3><span class="pill" id="followN">lädt …</span><span class="more">von dir, keine Antwort</span></header>
+          <div id="followRows"><div class="empty">Suche …</div></div>
+        </section>
+      </div>
       <div class="mailwrap card" id="mailwrap">
         <div class="maillist" id="maillist"><div class="empty">Hole Mails …</div></div>
         <div class="mailview" id="mailview"><div class="empty">Wähle links eine Mail.</div></div>
@@ -913,6 +961,104 @@
       });
   });
 
+  /* ============ Hinweisleiste: was jetzt wichtig ist ============ */
+  var cueNext = $("cueNext"), cueWait = $("cueWait"), cueFollow = $("cueFollow"),
+      cueGap = $("cueGap"), cueRain = $("cueRain");
+  var nextEv = null, followData = null;
+
+  function inWords(min) {
+    if (min < 1) return "jetzt";
+    if (min < 60) return "in " + min + " Min";
+    var h = Math.floor(min / 60), m = min % 60;
+    return "in " + h + " Std" + (m ? " " + m + " Min" : "");
+  }
+  function cue(el, on, html, cls) {
+    el.hidden = !on;
+    if (on) { el.innerHTML = html; el.className = "cue" + (cls ? " " + cls : ""); }
+  }
+  function renderCues() {
+    /* nächster Termin — tickt jede halbe Minute weiter */
+    if (nextEv) {
+      var min = Math.round((new Date(nextEv.iso) - Date.now()) / 60000);
+      if (min < -5) { nextEv = null; cue(cueNext, false); }
+      else cue(cueNext, true, '<span class="ic">◷</span><span><b>' + inWords(min) + '</b> · ' + esc(nextEv.title) + '</span>', min <= 30 ? "soon" : "");
+    } else cue(cueNext, false);
+
+    if (followData && Array.isArray(followData.waiting) && followData.waiting.length) {
+      var w = followData.waiting;
+      cue(cueWait, true, '<span class="ic">✉</span><span><b>' + w.length + '</b> ' + (w.length === 1 ? "Mail wartet" : "Mails warten") + ' auf dich <span class="sub">· längste seit ' + w[0].days + ' Tagen</span></span>');
+    } else cue(cueWait, false);
+
+    if (followData && Array.isArray(followData.followup) && followData.followup.length) {
+      var f = followData.followup;
+      cue(cueFollow, true, '<span class="ic">↻</span><span><b>' + f.length + '</b> zum Nachfassen <span class="sub">· ohne Antwort seit ' + f[0].days + ' Tagen</span></span>');
+    } else cue(cueFollow, false);
+  }
+  setInterval(renderCues, 30000);
+
+  function renderGap(gaps) {
+    if (!Array.isArray(gaps) || !gaps.length) { cue(cueGap, false); return; }
+    var g = gaps[0], h = Math.floor(g.min / 60), m = g.min % 60;
+    var len = h ? (h + " Std" + (m ? " " + m : "")) : (g.min + " Min");
+    cue(cueGap, true, '<span class="ic">▤</span><span>frei <b>' + g.day + " " + esc(g.from) + '–' + esc(g.to) + '</b> <span class="sub">· ' + len + '</span></span>');
+  }
+  function renderRain(wx) {
+    if (!wx || wx.error || !wx.rain) { cue(cueRain, false); return; }
+    cue(cueRain, true, '<span class="ic">☂</span><span>Regen ab <b>' + esc(wx.rain.at) + '</b> <span class="sub">· ' + wx.rain.prob + " % · " + inWords(wx.rain.in_min).replace("in ", "") + '</span></span>');
+  }
+  function renderQuota(q) {
+    var bar = $("quotaBar"), v = $("voiceQ");
+    if (!q || q.error || typeof q.left_pct !== "number") { bar.hidden = true; v.textContent = "Helmut"; return; }
+    bar.hidden = false;
+    bar.firstElementChild.style.width = q.left_pct + "%";
+    v.textContent = "Helmut · " + q.left_pct + " %";
+    v.title = "Stimm-Kontingent diesen Monat: " + q.left_pct + " % übrig";
+  }
+
+  cueNext.addEventListener("click", function () { showPage("cal"); });
+  cueGap.addEventListener("click", function () { showPage("cal"); });
+  cueRain.addEventListener("click", function () { showPage("cal"); });
+  cueWait.addEventListener("click", function () { showPage("mail"); setTimeout(function () { $("secWait").scrollIntoView({ behavior:"smooth", block:"start" }); }, 60); });
+  cueFollow.addEventListener("click", function () { showPage("mail"); setTimeout(function () { $("secFollow").scrollIntoView({ behavior:"smooth", block:"start" }); }, 60); });
+
+  /* ---- Listen auf der Posteingang-Seite ---- */
+  function threadRows(list, leer) {
+    if (!Array.isArray(list)) return '<div class="empty">' + esc((list && list.error) || "nicht erreichbar") + '</div>';
+    if (!list.length) return '<div class="empty">' + leer + '</div>';
+    return list.map(function (t) {
+      return '<div class="trow" data-id="' + t.id + '"><span class="s">' + esc(t.subject) + '</span>' +
+        '<span class="age' + (t.days >= 7 ? ' old' : '') + '">' + t.days + ' T</span>' +
+        '<span class="w">' + esc(t.who) + ' · ' + esc(t.date) + '</span></div>';
+    }).join("");
+  }
+  function loadFollowups() {
+    fetch("/api/followups").then(function (r) { return r.json(); }).then(function (d) {
+      followData = d;
+      var w = d.waiting, f = d.followup;
+      $("waitN").textContent = Array.isArray(w) ? (w.length ? w.length + " offen" : "nichts offen") : "Fehler";
+      $("waitN").className = "pill" + (Array.isArray(w) && w.length ? " new" : (Array.isArray(w) ? "" : " bad"));
+      $("followN").textContent = Array.isArray(f) ? (f.length ? f.length + " offen" : "nichts offen") : "Fehler";
+      $("followN").className = "pill" + (Array.isArray(f) && f.length ? " new" : (Array.isArray(f) ? "" : " bad"));
+      $("waitRows").innerHTML = threadRows(w, "Nichts unbeantwortet — sauber.");
+      $("followRows").innerHTML = threadRows(f, "Niemand schuldet dir eine Antwort.");
+      renderCues();
+    }).catch(function () { $("waitRows").innerHTML = '<div class="empty">Brücke nicht erreichbar.</div>'; });
+  }
+  document.addEventListener("click", function (e) {
+    var r = e.target.closest(".trow"); if (!r) return;
+    showPage("mail");
+    selMail = r.dataset.id;
+    $("mailwrap").classList.add("show");
+    $("mailview").innerHTML = '<div class="empty">Lade Mail …</div>';
+    fetch("/api/mail?id=" + encodeURIComponent(selMail)).then(function (x) { return x.json(); }).then(function (m) {
+      if (m.error) { $("mailview").innerHTML = '<div class="empty">' + esc(m.error) + '</div>'; return; }
+      $("mailview").innerHTML = '<button class="btn back" id="mailBack">← Zurück</button><h3>' + esc(m.subject) + '</h3>' +
+        '<div class="meta"><span>Von</span><b>' + esc(m.from) + '</b><span>An</span><span>' + esc(m.to) + '</span><span>Datum</span><span>' + esc(m.date) + '</span></div>' +
+        '<div class="body">' + esc(m.body || "(kein Text)") + '</div>';
+      $("mailwrap").scrollIntoView({ behavior:"smooth", block:"start" });
+    }).catch(function () { $("mailview").innerHTML = '<div class="empty">Konnte die Mail nicht laden.</div>'; });
+  });
+
   /* ============ Seiten ============ */
   var PAGES = { home:"viewHome", mail:"viewMail", cal:"viewCal", task:"viewTask", hist:"viewHist" };
   var page = "home", loaded = {};
@@ -924,7 +1070,7 @@
     try { history.replaceState(null, "", p === "home" ? location.pathname : "#" + p); } catch (e) {}
     window.scrollTo(0, 0);
     if (p === "home") { resize(); }
-    if (p === "mail" && !loaded.mail) loadMails();
+    if (p === "mail" && !loaded.mail) { loadMails(); loadFollowups(); }
     if (p === "cal" && !loaded.cal) loadWeek();
     if (p === "task" && !loaded.task) loadTasks();
     if (p === "hist") renderHist();
@@ -967,7 +1113,7 @@
     }).catch(function () { $("mailview").innerHTML = '<div class="empty">Konnte die Mail nicht laden.</div>'; });
   });
   $("mailview").addEventListener("click", function (e) { if (e.target.id === "mailBack") $("mailwrap").classList.remove("show"); });
-  $("mailReload").addEventListener("click", loadMails);
+  $("mailReload").addEventListener("click", function () { loadMails(); loadFollowups(); });
 
   /* ---- Termine (Woche) ---- */
   function loadWeek() {
@@ -1076,7 +1222,12 @@
       $("mailRows").innerHTML = d.mails.slice(0,5).map(function (m) { return rowHtml(m.time||"—", m.subject, m.from, m.unread, m.unread?["neu","new"]:["gelesen",""]); }).join("") || rowHtml("—","Posteingang leer","");
     } else if (d.mails) { $("mailN").textContent = "Fehler"; $("mailN").className = "pill bad"; $("mailRows").innerHTML = rowHtml("!","Mail nicht erreichbar", d.mails.error, true); }
 
+    nextEv = null;
     if (d.events && !d.events.error) {
+      for (var q = 0; q < d.events.length; q++) {
+        var e2 = d.events[q];
+        if (!e2.allday && e2.iso && new Date(e2.iso) > Date.now() - 300000) { nextEv = e2; break; }
+      }
       $("calRows").innerHTML = d.events.slice(0,5).map(function (ev) {
         var soon = ev.day === "heute" && !ev.allday; if (!next && ev.day === "heute" && !ev.allday) next = ev;
         return rowHtml(ev.when, ev.title, ev.day, soon, [ev.day, soon?"hi":""]);
@@ -1095,6 +1246,11 @@
       $("taskRows").innerHTML = d.reminders.slice(0,6).map(function (t) { return '<div class="row"><span class="cb" role="checkbox" aria-checked="false" tabindex="0" title="Abhaken" data-list="" data-name="' + esc(t) + '"></span><span class="m"><b>' + esc(t) + '</b></span></div>'; }).join("") || rowHtml("✓","Alles erledigt","");
     } else if (d.reminders) { $("taskN").textContent = "gesperrt"; $("taskN").className = "pill bad"; $("taskRows").innerHTML = rowHtml("!","Erinnerungen gesperrt","Systemeinstellungen → Datenschutz → Erinnerungen", true); }
 
+    renderGap(d.gaps);
+    renderRain(d.weather);
+    renderQuota(d.quota);
+    renderCues();
+
     var parts = [];
     parts.push(unread === 1 ? "eine neue Mail" : unread+" neue Mails");
     parts.push(nTasks === 1 ? "eine offene Aufgabe" : nTasks+" offene Aufgaben");
@@ -1103,6 +1259,7 @@
   }
   function loadDashboard() { fetch("/api/dashboard").then(function (r) { return r.json(); }).then(renderDashboard).catch(function () {}); }
   loadDashboard(); setInterval(loadDashboard, 60000);
+  loadFollowups(); setInterval(loadFollowups, 600000);
 
   var bridgeEl = $("bridge"), bridgeDot = $("bridgeDot");
   fetch("/api/health").then(function (r) { return r.json(); }).then(function (j) {
