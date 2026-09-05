@@ -961,15 +961,64 @@
         addLine("Chef", res.j.transcript, false);
         addLine(res.j.name || whoName(), res.j.reply, true);
         setTimeout(loadDashboard, 5000);
-        if (res.j.audio_b64) {
-          var el = new Audio("data:audio/mpeg;base64,"+res.j.audio_b64);
-          audio.attachElement(el); audioSrcEl.textContent = "HELMUT"; setState("speaking");
-          el.onended = function () { audio.detach(); resumeListen(); };
-          el.play().catch(function () { audio.detach(); resumeListen(); });
-        } else resumeListen();
+        if (res.j.audio_b64) sprich(res.j.audio_b64, !!res.j.briefing, resumeListen);
+        else resumeListen();
       })
       .catch(function (err) { busy = false; setState("error", "Brücke nicht erreichbar — läuft jarvis_server.py? ("+err+")"); autoTimer = setTimeout(resumeListen, 4200); });
   }
+  /* ============ Musik: Intro über Spotify beim Morgenbriefing ============ */
+  var MUSIK = { intro: 5000, nachlauf: 3000 };
+  function musik(was) {
+    return fetch("/api/music?do=" + was, { method: "POST" })
+      .then(function (r) { return r.json(); })
+      .catch(function () { return { ok: false }; });
+  }
+  var introEl = null;                                 // Ersatzweg: eigene Datei im Jarvis-Ordner
+  function introDatei() {
+    return new Promise(function (fertig) {
+      var m = new Audio("/api/intro");
+      m.volume = 1;
+      m.onerror = function () { fertig(false); };
+      m.play().then(function () { introEl = m; fertig(true); }).catch(function () { fertig(false); });
+    });
+  }
+  function introStart() {
+    return musik("start").then(function (m) {
+      if (m && m.ok) return true;
+      return introDatei();
+    });
+  }
+  function introLeiser() { if (introEl) introEl.volume = .18; else musik("duck"); }
+  function introStop() {
+    if (!introEl) { musik("stop"); return; }
+    var m = introEl; introEl = null;
+    var t = setInterval(function () {
+      m.volume = Math.max(0, m.volume - .03);
+      if (m.volume <= .01) { clearInterval(t); m.pause(); }
+    }, 60);
+  }
+
+  function sprich(b64, briefing, fertig) {
+    var el = new Audio("data:audio/mpeg;base64," + b64), laeuft = false;
+    function schluss() {
+      audio.detach();
+      if (laeuft) setTimeout(introStop, MUSIK.nachlauf);
+      fertig();
+    }
+    function los() {
+      audio.attachElement(el); audioSrcEl.textContent = "HELMUT"; setState("speaking");
+      el.onended = schluss;
+      el.play().catch(schluss);
+    }
+    if (!briefing) { los(); return; }
+    setState("speaking");
+    introStart().then(function (ok) {
+      if (!ok) { los(); return; }                   // keine Musik → einfach reden
+      laeuft = true; toast("Back in Black");
+      setTimeout(function () { introLeiser(); setTimeout(los, 400); }, MUSIK.intro);
+    });
+  }
+
   micBtn.addEventListener("click", function () { if (session) sessionOff(); else sessionOn(); });
   document.addEventListener("keydown", function (e) { if (e.code === "Space" && e.target === document.body) { e.preventDefault(); if (session) sessionOff(); else sessionOn(); } });
 
@@ -1421,7 +1470,7 @@
     else { bridgeEl.textContent = "teilweise"; bridgeDot.className = "live bad"; }
   }).catch(function () { bridgeEl.textContent = "fehlt"; bridgeDot.className = "live bad"; setState("error", "Brücke nicht erreichbar — jarvis_server.py starten"); });
 
-  window.JARVIS = { setJarvisState:setState, updateTranscript:function (t) { addLine("Jarvis", t, true); }, setTheme:function (m) { themeMode = m; refreshTheme(); } };
+  window.JARVIS = { setJarvisState:setState, updateTranscript:function (t) { addLine("Jarvis", t, true); }, setTheme:function (m) { themeMode = m; refreshTheme(); }, sprich:sprich };
   window.addEventListener("resize", resize);
   resize(); setState("idle"); requestAnimationFrame(frame);
   showPage((location.hash || "#home").slice(1));

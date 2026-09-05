@@ -757,6 +757,139 @@ def eleven_voices():
     return out
 
 
+# ---------------------------------------------------------------- Morgenbriefing
+
+GRUSS_MUSTER = ("guten morgen", "gueten morge", "guete morge", "gute morgen",
+                "morgen zusammen", "guten morgen zusammen", "moin", "guete morgä")
+
+
+def ist_morgengruss(text):
+    t = (text or "").strip().lower().rstrip(".!?,")
+    if not t:
+        return False
+    for w in ("hey", "hallo", "he", "ok", "okay", "jo"):
+        if t.startswith(w + " "):
+            t = t[len(w) + 1:].strip()
+    for m in load_team():                       # Anrede wegschneiden
+        for a in _aliase(m):
+            if t.startswith(a):
+                t = t[len(a):].lstrip(" ,.").strip()
+                break
+    return any(t.startswith(g) for g in GRUSS_MUSTER)
+
+
+def _anzahl(n, eins, viele):
+    return ("eine " + eins) if n == 1 else (f"{n} {viele}" if n else f"keine {viele}")
+
+
+def briefing_text(name):
+    """Kurzes gesprochenes Briefing aus den echten Daten."""
+    d = build_dashboard()
+    h = datetime.datetime.now().hour
+    teile = [f"Guten Morgen, Chef. Hier ist {name}."] if h < 11 else [f"Hallo Chef, hier ist {name}."]
+
+    mails = d.get("mails")
+    if isinstance(mails, list):
+        neu = [m for m in mails if m.get("unread")]
+        if neu:
+            satz = _anzahl(len(neu), "neue Mail", "neue Mails").capitalize()
+            absender = ", ".join(m["from"] for m in neu[:2])
+            teile.append(f"{satz} im Posteingang, von {absender}.")
+        else:
+            teile.append("Im Posteingang ist nichts Neues.")
+
+    evs = d.get("events")
+    if isinstance(evs, list):
+        heute = [e for e in evs if e.get("day") == "heute" and not e.get("allday")]
+        if heute:
+            erste = heute[0]
+            rest = len(heute) - 1
+            satz = f"Heute {_anzahl(len(heute), 'Termin', 'Termine')}, der nächste um {erste['when']}: {erste['title']}."
+            if rest > 0:
+                satz = satz[:-1] + f", danach noch {rest} weitere."
+            teile.append(satz)
+        else:
+            teile.append("Heute stehen keine Termine mehr an.")
+
+    rem = d.get("reminders")
+    if isinstance(rem, list) and rem:
+        teile.append(f"Offen sind {_anzahl(len(rem), 'Aufgabe', 'Aufgaben')}, zum Beispiel {rem[0]}.")
+
+    w = d.get("weather")
+    if isinstance(w, dict) and not w.get("error"):
+        satz = f"Draussen {w['temp']} Grad, {w['desc']}."
+        if w.get("rain"):
+            satz += f" Ab {w['rain']['at']} soll es regnen."
+        teile.append(satz)
+
+    f = _follow.get("data")                      # nur wenn ohnehin schon geladen
+    if isinstance(f, dict) and isinstance(f.get("waiting"), list) and f["waiting"]:
+        teile.append(f"Und {len(f['waiting'])} Gespräche warten noch auf deine Antwort.")
+
+    teile.append("Womit fangen wir an?")
+    return " ".join(teile)
+
+
+# ---------------------------------------------------------------- Musik (Spotify)
+
+INTRO_TRACK = os.environ.get("JARVIS_INTRO_TRACK", "spotify:track:08mG3Y1vljYA6bvDt4Wqkj")
+MUSIK_LAUT = int(os.environ.get("JARVIS_MUSIK_LAUT", "70"))    # Intro
+MUSIK_LEISE = int(os.environ.get("JARVIS_MUSIK_LEISE", "18"))  # während gesprochen wird
+_musik = {"lief": False, "vol": None}
+
+
+def _osa(script, timeout=8):
+    r = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=timeout)
+    if r.returncode != 0:
+        raise RuntimeError((r.stderr or "").strip()[:160] or "osascript-Fehler")
+    return r.stdout.strip()
+
+
+def spotify_da():
+    try:
+        return _osa('tell application "System Events" to return (exists file "/Applications/Spotify.app")') == "true"
+    except Exception:
+        return False
+
+
+def musik_start():
+    """Song von vorne, laut. Merkt sich die alte Lautstärke."""
+    try:
+        _musik["vol"] = int(_osa('tell application "Spotify" to return sound volume') or "70")
+    except Exception:
+        _musik["vol"] = None
+    _osa('tell application "Spotify"\n'
+         'activate\n'
+         f'set sound volume to {MUSIK_LAUT}\n'
+         f'play track "{INTRO_TRACK}"\n'
+         'end tell', timeout=15)
+    _musik["lief"] = True
+    return {"ok": True, "quelle": "spotify"}
+
+
+def musik_leiser():
+    _osa(f'tell application "Spotify" to set sound volume to {MUSIK_LEISE}')
+    return {"ok": True}
+
+
+def _ausblenden():
+    try:
+        for v in range(MUSIK_LEISE, -1, -3):
+            _osa(f'tell application "Spotify" to set sound volume to {max(v, 0)}')
+            time.sleep(0.12)
+        _osa('tell application "Spotify" to pause')
+        if _musik.get("vol"):
+            _osa(f'tell application "Spotify" to set sound volume to {_musik["vol"]}')
+    except Exception as e:
+        print(f"  Musik-Ausblenden: {e}")
+    _musik["lief"] = False
+
+
+def musik_stop():
+    threading.Thread(target=_ausblenden, daemon=True).start()
+    return {"ok": True}
+
+
 # ---------------------------------------------------------------- HTTP-Server
 
 class Handler(BaseHTTPRequestHandler):
@@ -817,6 +950,23 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, json.dumps(fetch_reminders_all()).encode())
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)[:200]}).encode())
+        elif self.path.startswith("/api/intro"):
+            pfad = None
+            for name in ("intro.mp3", "intro.m4a", "intro.wav"):
+                p = os.path.join(APP_DIR, name)
+                if os.path.exists(p):
+                    pfad = p
+                    break
+            if not pfad:
+                self._send(404, json.dumps({"error": "keine Datei intro.mp3 im Jarvis-Ordner"}).encode())
+                return
+            try:
+                with open(pfad, "rb") as f:
+                    daten = f.read()
+                typ = "audio/mpeg" if pfad.endswith((".mp3", ".m4a")) else "audio/wav"
+                self._send(200, daten, typ)
+            except Exception as e:
+                self._send(500, json.dumps({"error": str(e)[:120]}).encode())
         elif self.path == "/api/health":
             ok = {"server": True, "elevenlabs": bool(ELEVEN_KEY), "hermes_key": bool(HERMES_KEY)}
             self._send(200, json.dumps(ok).encode())
@@ -824,6 +974,23 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, b"not found", "text/plain")
 
     def do_POST(self):
+        if self.path.startswith("/api/music"):
+            q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            was = (q.get("do") or ["start"])[0]
+            try:
+                if was == "start":
+                    if not spotify_da():
+                        self._send(200, json.dumps({"ok": False, "error": "Spotify nicht installiert"}).encode())
+                        return
+                    res = musik_start()
+                elif was == "duck":
+                    res = musik_leiser()
+                else:
+                    res = musik_stop()
+                self._send(200, json.dumps(res).encode())
+            except Exception as e:
+                self._send(200, json.dumps({"ok": False, "error": str(e)[:200]}).encode())
+            return
         if self.path == "/api/team":
             try:
                 n = int(self.headers.get("Content-Length", "0"))
@@ -841,9 +1008,11 @@ class Handler(BaseHTTPRequestHandler):
                     self._send(400, json.dumps({"error": "leere Frage"}).encode())
                     return
                 m, gewechselt = wer_ist_gemeint(text, member(body.get("who")))
-                reply = ask_hermes(text, m["hint"] + team_kontext() + " " + TEXT_HINT)
-                self._send(200, json.dumps({"reply": reply, "who": m["id"],
-                                            "name": m["name"], "switched": gewechselt}).encode())
+                morgen = ist_morgengruss(text)
+                reply = (briefing_text(m["name"]) if morgen
+                         else ask_hermes(text, m["hint"] + team_kontext() + " " + TEXT_HINT))
+                self._send(200, json.dumps({"reply": reply, "who": m["id"], "name": m["name"],
+                                            "switched": gewechselt, "briefing": morgen}).encode())
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)[:200]}).encode())
             return
@@ -886,8 +1055,13 @@ class Handler(BaseHTTPRequestHandler):
             who, gewechselt = wer_ist_gemeint(text, who)
             if gewechselt:
                 print(f"  → {who['name']} übernimmt")
-            step = "hermes"
-            reply = ask_hermes(text, who["hint"] + team_kontext() + " " + SYSTEM_HINT)
+            morgen = ist_morgengruss(text)
+            if morgen:
+                step = "briefing"
+                reply = briefing_text(who["name"])
+            else:
+                step = "hermes"
+                reply = ask_hermes(text, who["hint"] + team_kontext() + " " + SYSTEM_HINT)
             print(f"  {who['name']}: {reply[:120]}")
 
             audio_b64 = ""
@@ -900,7 +1074,8 @@ class Handler(BaseHTTPRequestHandler):
 
             self._send(200, json.dumps({
                 "transcript": text, "reply": reply, "audio_b64": audio_b64,
-                "who": who["id"], "name": who["name"], "switched": gewechselt
+                "who": who["id"], "name": who["name"], "switched": gewechselt,
+                "briefing": morgen
             }).encode())
 
         except urllib.error.HTTPError as e:
