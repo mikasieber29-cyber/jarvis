@@ -684,11 +684,53 @@ def save_team(members):
     return load_team()
 
 
+def team_kontext():
+    """Kurzer Hinweis, damit jede Person weiss, wer sonst noch da ist."""
+    ms = load_team()
+    liste = ", ".join(f"{m['name']} ({m['role']})" for m in ms)
+    return (" Du gehörst zu Mikas Team: " + liste + ". "
+            "Wenn eine Frage klar zu einer anderen Person gehört, sag kurz, "
+            "wer besser passt — Mika wechselt dann mit «Hey <Name>».")
+
+
 def member(who):
     for m in load_team():
         if m["id"] == (who or "jarvis"):
             return m
     return load_team()[0]
+
+
+# Wenn Mika jemanden beim Namen anspricht, uebernimmt diese Person
+ANRUFE = ("hey", "hallo", "he", "ey", "ok", "okay", "jo", "sag mal", "du")
+
+NAMENS_VARIANTEN = {
+    "jarvis":  ["jarvis", "travis", "jervis", "jarwis", "charvis", "dscharvis", "sarvis"],
+    "rachel":  ["rachel", "rachael", "rachelle", "raechel", "räschel", "reichel", "rejchel", "raschel"],
+    "ben":     ["ben", "benn", "bän", "beno"],
+    "lina":    ["lina", "lena", "leena", "liena", "linna"],
+    "vera":    ["vera", "wera"],
+}
+
+
+def _aliase(m):
+    n = (m.get("name") or "").strip().lower().split()[0] if m.get("name") else ""
+    out = set([n]) if n else set()
+    out |= set(NAMENS_VARIANTEN.get(n, []))
+    return sorted((a for a in out if len(a) >= 2), key=len, reverse=True)
+
+
+def wer_ist_gemeint(text, fallback):
+    """Sucht am Satzanfang eine Anrede wie 'Hey Rachel' und gibt die Person zurueck."""
+    import re
+    t = (text or "").strip().lower()
+    if not t:
+        return fallback, False
+    anrede = "(?:%s)" % "|".join(re.escape(a) for a in ANRUFE)
+    for m in load_team():
+        for a in _aliase(m):
+            if re.match(r"^\s*(?:%s[\s,]+)?%s\b" % (anrede, re.escape(a)), t):
+                return m, (m["id"] != fallback["id"])
+    return fallback, False
 
 
 _voices = {"t": 0, "data": None}
@@ -798,9 +840,10 @@ class Handler(BaseHTTPRequestHandler):
                 if not text:
                     self._send(400, json.dumps({"error": "leere Frage"}).encode())
                     return
-                m = member(body.get("who"))
-                reply = ask_hermes(text, m["hint"] + " " + TEXT_HINT)
-                self._send(200, json.dumps({"reply": reply, "who": m["id"], "name": m["name"]}).encode())
+                m, gewechselt = wer_ist_gemeint(text, member(body.get("who")))
+                reply = ask_hermes(text, m["hint"] + team_kontext() + " " + TEXT_HINT)
+                self._send(200, json.dumps({"reply": reply, "who": m["id"],
+                                            "name": m["name"], "switched": gewechselt}).encode())
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)[:200]}).encode())
             return
@@ -840,8 +883,11 @@ class Handler(BaseHTTPRequestHandler):
                 return
 
             print(f"  Chef sagte: {text}")
+            who, gewechselt = wer_ist_gemeint(text, who)
+            if gewechselt:
+                print(f"  → {who['name']} übernimmt")
             step = "hermes"
-            reply = ask_hermes(text, who["hint"] + " " + SYSTEM_HINT)
+            reply = ask_hermes(text, who["hint"] + team_kontext() + " " + SYSTEM_HINT)
             print(f"  {who['name']}: {reply[:120]}")
 
             audio_b64 = ""
@@ -854,7 +900,7 @@ class Handler(BaseHTTPRequestHandler):
 
             self._send(200, json.dumps({
                 "transcript": text, "reply": reply, "audio_b64": audio_b64,
-                "who": who["id"], "name": who["name"]
+                "who": who["id"], "name": who["name"], "switched": gewechselt
             }).encode())
 
         except urllib.error.HTTPError as e:

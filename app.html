@@ -455,7 +455,7 @@
     </div>
 
     <div class="view" id="viewTeam" hidden>
-      <div class="ph"><h2>Team</h2><span class="pill" id="teamHint">gemeinsames Gedächtnis</span><span class="sp"></span><button class="btn" id="teamReload">Aktualisieren</button></div>
+      <div class="ph"><h2>Team</h2><span class="pill" id="teamHint">gemeinsames Gedächtnis</span><span class="more" style="margin-left:0">sag «Hey Rachel», «Hey Ben» oder «Hey Lina» — dann übernimmt sie oder er</span><span class="sp"></span><button class="btn" id="teamReload">Aktualisieren</button></div>
       <div class="tree" id="tree"><div class="card empty">Lade Team …</div></div>
     </div>
 
@@ -957,6 +957,7 @@
         if (!res.ok || res.j.error) { setState("error", "Problem bei: "+(res.j.error||"?")+" — "+(res.j.detail||"").slice(0,90)); autoTimer = setTimeout(resumeListen, 4200); return; }
         if (!res.j.transcript) { resumeListen(); return; }
         rounds++; sbCount.textContent = rounds;
+        if (res.j.who && res.j.who !== who) { setWho(res.j.who); if (res.j.switched) toast(res.j.name + " übernimmt"); }
         addLine("Chef", res.j.transcript, false);
         addLine(res.j.name || whoName(), res.j.reply, true);
         setTimeout(loadDashboard, 5000);
@@ -994,6 +995,7 @@
         chatSend.disabled = false;
         var t = document.getElementById("thinking"); if (t) t.remove();
         if (res.error) { addLine(whoName(), "Das hat nicht geklappt: " + res.error, false); return; }
+        if (res.who && res.who !== who) { setWho(res.who); if (res.switched) toast(res.name + " übernimmt"); }
         addLine(res.name || whoName(), res.reply, false);
         rounds++; sbCount.textContent = rounds;
         setTimeout(loadDashboard, 5000);
