@@ -264,7 +264,13 @@
   .ava { width:40px; height:40px; flex:0 0 auto; border-radius:11px; display:grid; place-items:center; font-family:"Inter Tight",sans-serif; font-weight:700; font-size:15px; background:var(--accsoft); color:var(--acc); }
   .mate.on .ava { background:var(--acc); color:var(--onacc); }
   .mate h3 { font-family:"Inter Tight",sans-serif; font-size:16px; margin:0; }
-  .mate .role { font-size:12px; color:var(--acc); font-weight:600; letter-spacing:.04em; text-transform:uppercase; }
+  .mate .nm { display:block; font-family:"Inter Tight",sans-serif; font-size:16px; font-weight:700; color:var(--ink); background:transparent; border:1px solid transparent; border-radius:6px; padding:1px 5px; margin-left:-5px; width:100%; max-width:190px; }
+  .mate .nm:hover { border-color:var(--line); }
+  .mate .nm:focus { border-color:var(--acc); outline:none; background:var(--bg); }
+  .vid { display:none; width:100%; border:1px solid var(--line); background:var(--bg); color:var(--ink); border-radius:8px; padding:7px 9px; font:400 12px "IBM Plex Mono",monospace; }
+  .vid.show { display:block; }
+  .mate .hintline { font-size:11.5px; color:var(--ink3); }
+  .mate .role { display:block; font-size:12px; color:var(--acc); font-weight:600; letter-spacing:.04em; text-transform:uppercase; }
   .mate p { margin:0; font-size:13px; line-height:1.5; color:var(--ink2); }
   .mate .foot { display:flex; align-items:center; gap:8px; margin-top:auto; padding-top:4px; }
   .mate select { flex:1; min-width:0; border:1px solid var(--line); background:var(--bg); color:var(--ink); border-radius:8px; padding:7px 9px; font:400 12.5px "IBM Plex Sans",Barlow,sans-serif; }
@@ -1121,16 +1127,27 @@
     for (var i = 0; i < voices.length; i++) {
       o += '<option value="' + esc(voices[i].id) + '"' + (voices[i].id === sel ? " selected" : "") + '>' + esc(voices[i].name) + (voices[i].desc ? " · " + esc(voices[i].desc) : "") + '</option>';
     }
+    o += '<option value="__id__"' + (sel === "__id__" ? " selected" : "") + '>— eigene Stimm-ID eintragen —</option>';
     return o;
   }
+  function knownVoice(id) {
+    if (!id || !Array.isArray(voices)) return false;
+    for (var i = 0; i < voices.length; i++) if (voices[i].id === id) return true;
+    return false;
+  }
   function mateCard(m) {
+    var eigene = m.voice_id && !knownVoice(m.voice_id);
     return '<div class="mate' + (m.id === who ? " on" : "") + '" data-id="' + m.id + '">' +
       '<div class="top"><span class="ava">' + esc(initials(m.name)) + '</span>' +
-      '<span><h3>' + esc(m.name) + '</h3><span class="role">' + esc(m.role) + '</span></span></div>' +
+      '<span style="min-width:0"><input class="nm" value="' + esc(m.name) + '" aria-label="Name" spellcheck="false">' +
+      '<span class="role">' + esc(m.role) + '</span></span></div>' +
       '<p>' + esc(m.desc) + '</p>' +
-      (m.voice_id ? "" : '<span class="novoice">Noch keine Stimme — antwortet nur schriftlich.</span>') +
-      '<div class="foot"><select data-vid="' + m.id + '">' + voiceOptions(m.voice_id) + '</select>' +
-      '<button class="pickbtn">' + (m.id === who ? "aktiv" : "auswählen") + '</button></div></div>';
+      (m.voice_id ? '' : '<span class="novoice">Noch keine Stimme — antwortet nur schriftlich.</span>') +
+      '<div class="foot"><select data-vid="' + m.id + '">' + voiceOptions(eigene ? "__id__" : m.voice_id) + '</select>' +
+      '<button class="pickbtn">' + (m.id === who ? "aktiv" : "auswählen") + '</button></div>' +
+      '<input class="vid' + (eigene ? " show" : "") + '" data-idfor="' + m.id + '" value="' + esc(eigene ? m.voice_id : "") + '" placeholder="Stimm-ID aus ElevenLabs einfügen" spellcheck="false">' +
+      (eigene ? '<span class="hintline">eigene Stimm-ID hinterlegt</span>' : '') +
+      '</div>';
   }
   function renderTeam() {
     if (!team.length) { $("tree").innerHTML = '<div class="card empty">Kein Team geladen.</div>'; return; }
@@ -1154,15 +1171,42 @@
     var b = e.target.closest(".pickbtn"); if (!b) return;
     setWho(b.closest(".mate").dataset.id);
   });
-  $("tree").addEventListener("change", function (e) {
-    var sel = e.target.closest("select[data-vid]"); if (!sel) return;
-    var m = mateOf(sel.dataset.vid);
-    m.voice_id = sel.value;
-    m.voice_name = sel.value ? sel.options[sel.selectedIndex].textContent.split(" · ")[0] : "";
-    fetch("/api/team", { method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify({ team:team }) })
+  function saveTeam(msg) {
+    return fetch("/api/team", { method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify({ team:team }) })
       .then(function (r) { return r.json(); })
-      .then(function (d) { if (d.team) { team = d.team; renderTeam(); toast("Stimme gespeichert für " + m.name); } })
-      .catch(function () { toast("Konnte die Stimme nicht speichern"); });
+      .then(function (d) { if (d.team) { team = d.team; renderTeam(); if (msg) toast(msg); } })
+      .catch(function () { toast("Konnte nicht speichern — läuft die Brücke?"); });
+  }
+  $("tree").addEventListener("change", function (e) {
+    var sel = e.target.closest("select[data-vid]");
+    if (sel) {
+      var card = sel.closest(".mate"), box = card.querySelector(".vid");
+      if (sel.value === "__id__") { box.classList.add("show"); box.focus(); return; }
+      box.classList.remove("show");
+      var m = mateOf(sel.dataset.vid);
+      m.voice_id = sel.value;
+      m.voice_name = sel.value ? sel.options[sel.selectedIndex].textContent.split(" · ")[0] : "";
+      saveTeam(sel.value ? "Stimme gespeichert für " + m.name : "Stimme entfernt bei " + m.name);
+    }
+  });
+  /* Name und eigene Stimm-ID: speichern beim Verlassen des Feldes oder mit Enter */
+  function commitField(el) {
+    if (el.classList.contains("nm")) {
+      var m1 = mateOf(el.closest(".mate").dataset.id), v = el.value.trim();
+      if (!v || v === m1.name) { el.value = m1.name; return; }
+      m1.name = v.slice(0, 24); saveTeam("Name geändert: " + m1.name);
+    } else if (el.classList.contains("vid")) {
+      var m2 = mateOf(el.dataset.idfor), id = el.value.trim();
+      if (id === m2.voice_id) return;
+      m2.voice_id = id; m2.voice_name = id ? "eigene ID" : "";
+      saveTeam(id ? "Stimm-ID gespeichert für " + m2.name : "Stimme entfernt bei " + m2.name);
+    }
+  }
+  $("tree").addEventListener("blur", function (e) {
+    if (e.target.classList && (e.target.classList.contains("nm") || e.target.classList.contains("vid"))) commitField(e.target);
+  }, true);
+  $("tree").addEventListener("keydown", function (e) {
+    if (e.key === "Enter" && e.target.classList && (e.target.classList.contains("nm") || e.target.classList.contains("vid"))) { e.preventDefault(); e.target.blur(); }
   });
 
   /* ============ Seiten ============ */
