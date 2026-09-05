@@ -763,19 +763,40 @@ GRUSS_MUSTER = ("guten morgen", "gueten morge", "guete morge", "gute morgen",
                 "morgen zusammen", "guten morgen zusammen", "moin", "guete morgä")
 
 
+KURZ_GRUSS = ("morgen", "morge", "morgä", "moin", "moin moin", "guten tag", "grüezi")
+
+
+def _ohne_namen(t):
+    """Anrede vorne und hinten wegschneiden: 'hey jarvis guten morgen chef' → 'guten morgen'."""
+    namen = []
+    for m in load_team():
+        namen.extend(_aliase(m))
+    namen.append("chef")
+    aenderung = True
+    while aenderung:
+        aenderung = False
+        for w in ("hey", "hallo", "he", "ey", "ok", "okay", "jo", "du", "sag mal"):
+            if t.startswith(w + " "):
+                t = t[len(w) + 1:].strip(); aenderung = True
+        for a in namen:
+            if t == a or (t.startswith(a) and t[len(a):len(a) + 1] in (" ", ",", ".")):
+                t = t[len(a):].lstrip(" ,.").strip(); aenderung = True
+            if t.endswith(" " + a) or t.endswith(", " + a):
+                t = t[:t.rfind(a)].rstrip(" ,.").strip(); aenderung = True
+    return t
+
+
 def ist_morgengruss(text):
     t = (text or "").strip().lower().rstrip(".!?,")
     if not t:
         return False
-    for w in ("hey", "hallo", "he", "ok", "okay", "jo"):
-        if t.startswith(w + " "):
-            t = t[len(w) + 1:].strip()
-    for m in load_team():                       # Anrede wegschneiden
-        for a in _aliase(m):
-            if t.startswith(a):
-                t = t[len(a):].lstrip(" ,.").strip()
-                break
-    return any(t.startswith(g) for g in GRUSS_MUSTER)
+    t = _ohne_namen(t)
+    fueller = ("zusammen", "zäme", "miteinander", "alle", "allerseits", "auch")
+    for g in GRUSS_MUSTER:
+        if t.startswith(g):
+            rest = t[len(g):].strip(" ,.!")     # nur der blosse Gruss, kein ganzer Satz
+            return rest == "" or rest.split()[0] in fueller
+    return t in KURZ_GRUSS                      # blosses "Morgen" nur allein, nie im Satz
 
 
 def _anzahl(n, eins, viele):
