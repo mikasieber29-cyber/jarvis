@@ -855,7 +855,7 @@ def briefing_text(name):
 
 INTRO_TRACK = os.environ.get("JARVIS_INTRO_TRACK", "spotify:track:08mG3Y1vljYA6bvDt4Wqkj")
 MUSIK_LAUT = int(os.environ.get("JARVIS_MUSIK_LAUT", "95"))    # Intro
-MUSIK_LEISE = int(os.environ.get("JARVIS_MUSIK_LEISE", "28"))  # während gesprochen wird
+MUSIK_LEISE = int(os.environ.get("JARVIS_MUSIK_LEISE", "45"))  # während gesprochen wird
 _musik = {"lief": False, "vol": None}
 
 
