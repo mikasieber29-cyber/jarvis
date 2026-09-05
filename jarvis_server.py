@@ -127,9 +127,9 @@ def ask_hermes(text, hint=None):
     return data["choices"][0]["message"]["content"].strip()
 
 
-def helmut_speaks(text):
+def helmut_speaks(text, voice_id=None):
     url = (
-        f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVEN_VOICE_ID}"
+        f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id or ELEVEN_VOICE_ID}"
         "?output_format=mp3_44100_128"
     )
     payload = json.dumps({"text": text, "model_id": ELEVEN_MODEL}).encode()
@@ -621,6 +621,100 @@ def fetch_quota():
     return out
 
 
+# ---------------------------------------------------------------- Das Team
+
+TEAM_FILE = os.path.join(APP_DIR, "team.json")
+
+TEAM_DEFAULT = [
+    {"id": "jarvis", "name": "Jarvis", "role": "Chef-Assistent", "lead": True,
+     "desc": "Kalender, Mail, Aufgaben, Alltag — der Kopf des Ganzen.",
+     "voice_id": ELEVEN_VOICE_ID, "voice_name": "Helmut",
+     "hint": "Du bist JARVIS, Mikas persönlicher Assistent. Du kümmerst dich um "
+             "Kalender, Mail, Aufgaben und Alltagsfragen. Nenn ihn Chef. Du bist "
+             "loyal, ruhig und trocken-humorvoll."},
+    {"id": "akquise", "name": "Vera", "role": "Akquise", "lead": False,
+     "desc": "Firmen recherchieren, Anschreiben entwerfen, Nachfassen.",
+     "voice_id": "", "voice_name": "",
+     "hint": "Du bist Vera und zuständig für Neukunden-Akquise bei Mikas "
+             "Webdesign-Firma. Du recherchierst passende Firmen, entwirfst kurze "
+             "persönliche Anschreiben und erinnerst ans Nachfassen. Du schreibst "
+             "knapp, konkret und ohne Marketing-Floskeln. Nenn ihn Chef. "
+             "Mails werden immer nur als Entwurf vorbereitet, nie gesendet."},
+    {"id": "technik", "name": "Ben", "role": "Technik", "lead": False,
+     "desc": "Websites, Code, Fehlersuche, technische Einschätzungen.",
+     "voice_id": "", "voice_name": "",
+     "hint": "Du bist Ben und der technische Kopf in Mikas Webdesign-Firma. "
+             "Du beantwortest Fragen zu Websites, Code, Hosting und Fehlersuche. "
+             "Du erklärst verständlich, ohne Fachjargon-Nebel, und sagst klar, "
+             "wenn etwas eine schlechte Idee ist. Nenn ihn Chef."},
+    {"id": "content", "name": "Lena", "role": "Content", "lead": False,
+     "desc": "LinkedIn-Posts, Texte, Ideen, Formulierungen.",
+     "voice_id": "", "voice_name": "",
+     "hint": "Du bist Lena und zuständig für Texte und Content bei Mikas Firma. "
+             "Du schreibst LinkedIn-Beiträge, Website-Texte und Formulierungen. "
+             "Du schreibst wie ein Mensch: konkret, kurze Sätze, keine Buzzwords, "
+             "keine Emoji-Wände. Nenn ihn Chef."},
+]
+
+
+def load_team():
+    try:
+        with open(TEAM_FILE, "r", encoding="utf-8") as f:
+            saved = json.load(f)
+        by_id = {m.get("id"): m for m in saved if isinstance(m, dict)}
+        out = []
+        for d in TEAM_DEFAULT:
+            m = dict(d)
+            if d["id"] in by_id:          # nur Stimme und Name uebernehmen, Rest bleibt gepflegt
+                for k in ("voice_id", "voice_name", "name"):
+                    if by_id[d["id"]].get(k):
+                        m[k] = by_id[d["id"]][k]
+            out.append(m)
+        return out
+    except Exception:
+        return [dict(d) for d in TEAM_DEFAULT]
+
+
+def save_team(members):
+    keep = [{"id": m.get("id"), "name": m.get("name", ""),
+             "voice_id": m.get("voice_id", ""), "voice_name": m.get("voice_name", "")}
+            for m in members if m.get("id")]
+    with open(TEAM_FILE, "w", encoding="utf-8") as f:
+        json.dump(keep, f, ensure_ascii=False, indent=2)
+    return load_team()
+
+
+def member(who):
+    for m in load_team():
+        if m["id"] == (who or "jarvis"):
+            return m
+    return load_team()[0]
+
+
+_voices = {"t": 0, "data": None}
+
+
+def eleven_voices():
+    """Welche Stimmen im ElevenLabs-Konto verfuegbar sind."""
+    if time.time() - _voices["t"] < 900 and _voices["data"] is not None:
+        return _voices["data"]
+    out = []
+    try:
+        req = urllib.request.Request("https://api.elevenlabs.io/v1/voices",
+                                     headers={"xi-api-key": ELEVEN_KEY})
+        with urllib.request.urlopen(req, timeout=15) as r:
+            d = json.loads(r.read())
+        for v in d.get("voices", []):
+            lab = v.get("labels") or {}
+            out.append({"id": v.get("voice_id"), "name": v.get("name", "?"),
+                        "desc": ", ".join(x for x in [lab.get("gender"), lab.get("age"),
+                                                      lab.get("accent"), lab.get("description")] if x)})
+    except Exception as e:
+        out = {"error": str(e)[:120]}
+    _voices.update(t=time.time(), data=out)
+    return out
+
+
 # ---------------------------------------------------------------- HTTP-Server
 
 class Handler(BaseHTTPRequestHandler):
@@ -669,6 +763,11 @@ class Handler(BaseHTTPRequestHandler):
             q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
             days = max(1, min(14, int((q.get("days") or ["7"])[0])))
             self._json_call(lambda c: fetch_week(c, days))
+        elif self.path.startswith("/api/team"):
+            try:
+                self._send(200, json.dumps({"team": load_team(), "voices": eleven_voices()}).encode())
+            except Exception as e:
+                self._send(500, json.dumps({"error": str(e)[:200]}).encode())
         elif self.path.startswith("/api/followups"):
             self._json_call(lambda c: fetch_followups(c))
         elif self.path.startswith("/api/reminders"):
@@ -683,6 +782,14 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, b"not found", "text/plain")
 
     def do_POST(self):
+        if self.path == "/api/team":
+            try:
+                n = int(self.headers.get("Content-Length", "0"))
+                body = json.loads(self.rfile.read(n) or b"{}")
+                self._send(200, json.dumps({"team": save_team(body.get("team") or [])}).encode())
+            except Exception as e:
+                self._send(500, json.dumps({"error": str(e)[:200]}).encode())
+            return
         if self.path == "/api/ask":
             try:
                 n = int(self.headers.get("Content-Length", "0"))
@@ -691,8 +798,9 @@ class Handler(BaseHTTPRequestHandler):
                 if not text:
                     self._send(400, json.dumps({"error": "leere Frage"}).encode())
                     return
-                reply = ask_hermes(text, TEXT_HINT)
-                self._send(200, json.dumps({"reply": reply}).encode())
+                m = member(body.get("who"))
+                reply = ask_hermes(text, m["hint"] + " " + TEXT_HINT)
+                self._send(200, json.dumps({"reply": reply, "who": m["id"], "name": m["name"]}).encode())
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)[:200]}).encode())
             return
@@ -705,10 +813,12 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 self._send(500, json.dumps({"ok": False, "error": str(e)[:200]}).encode())
             return
-        if self.path != "/api/talk":
+        if not self.path.startswith("/api/talk"):
             self._send(404, b"not found", "text/plain")
             return
 
+        q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+        who = member((q.get("who") or ["jarvis"])[0])
         length = int(self.headers.get("Content-Length", "0"))
         audio = self.rfile.read(length)
         step = "aufnahme"
@@ -731,19 +841,20 @@ class Handler(BaseHTTPRequestHandler):
 
             print(f"  Chef sagte: {text}")
             step = "hermes"
-            reply = ask_hermes(text)
-            print(f"  Jarvis: {reply[:120]}")
+            reply = ask_hermes(text, who["hint"] + " " + SYSTEM_HINT)
+            print(f"  {who['name']}: {reply[:120]}")
 
             audio_b64 = ""
             if ELEVEN_KEY:
                 step = "helmut"
                 try:
-                    audio_b64 = base64.b64encode(helmut_speaks(reply)).decode()
+                    audio_b64 = base64.b64encode(helmut_speaks(reply, who.get("voice_id"))).decode()
                 except Exception as e:
                     print(f"  Helmut-Fehler (Antwort kommt als Text): {e}")
 
             self._send(200, json.dumps({
-                "transcript": text, "reply": reply, "audio_b64": audio_b64
+                "transcript": text, "reply": reply, "audio_b64": audio_b64,
+                "who": who["id"], "name": who["name"]
             }).encode())
 
         except urllib.error.HTTPError as e:

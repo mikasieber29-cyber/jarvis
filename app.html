@@ -244,6 +244,37 @@
   .quota { height:3px; background:var(--pill); border-radius:2px; overflow:hidden; margin:2px 10px 0; }
   .quota i { display:block; height:100%; background:var(--acc); }
 
+  /* ---------- Team: Stammbaum ---------- */
+  .tree { display:flex; flex-direction:column; align-items:center; gap:0; }
+  .tree .lead { width:min(340px,100%); }
+  .stem { width:2px; height:26px; background:var(--line); }
+  .branch { position:relative; width:100%; max-width:1000px; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; padding-top:26px; }
+  .branch::before { content:""; position:absolute; top:0; left:16.6%; right:16.6%; height:2px; background:var(--line); }
+  .branch > * { position:relative; }
+  .branch > *::before { content:""; position:absolute; top:-26px; left:50%; width:2px; height:26px; background:var(--line); }
+  @media (max-width:820px) {
+    .branch { grid-template-columns:1fr; padding-top:16px; gap:12px; }
+    .branch::before { display:none; }
+    .branch > *::before { display:none; }
+    .stem { height:16px; }
+  }
+  .mate { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px 18px; display:flex; flex-direction:column; gap:9px; }
+  .mate.on { border-color:var(--acc); box-shadow:0 0 0 1px var(--acc); }
+  .mate .top { display:flex; align-items:center; gap:11px; }
+  .ava { width:40px; height:40px; flex:0 0 auto; border-radius:11px; display:grid; place-items:center; font-family:"Inter Tight",sans-serif; font-weight:700; font-size:15px; background:var(--accsoft); color:var(--acc); }
+  .mate.on .ava { background:var(--acc); color:var(--onacc); }
+  .mate h3 { font-family:"Inter Tight",sans-serif; font-size:16px; margin:0; }
+  .mate .role { font-size:12px; color:var(--acc); font-weight:600; letter-spacing:.04em; text-transform:uppercase; }
+  .mate p { margin:0; font-size:13px; line-height:1.5; color:var(--ink2); }
+  .mate .foot { display:flex; align-items:center; gap:8px; margin-top:auto; padding-top:4px; }
+  .mate select { flex:1; min-width:0; border:1px solid var(--line); background:var(--bg); color:var(--ink); border-radius:8px; padding:7px 9px; font:400 12.5px "IBM Plex Sans",Barlow,sans-serif; }
+  .mate select:focus-visible { outline:2px solid var(--accline); }
+  .pickbtn { border:1px solid var(--line); background:var(--card); color:var(--ink); border-radius:8px; padding:7px 12px; font:600 12.5px "IBM Plex Sans",Barlow,sans-serif; cursor:pointer; white-space:nowrap; }
+  .pickbtn:hover { background:var(--bub); }
+  .mate.on .pickbtn { background:var(--acc); border-color:var(--acc); color:var(--onacc); }
+  .whopill { display:inline-flex; align-items:center; gap:7px; background:var(--accsoft); color:var(--acc); border:1px solid var(--accline); border-radius:999px; padding:4px 11px; font-size:12px; font-weight:600; cursor:pointer; }
+  .novoice { font-size:12px; color:var(--warn); }
+
   /* ---------- Handy-Kopfzeile (nur klein) ---------- */
   .mbar { display:none; }
 
@@ -296,6 +327,7 @@
       <a data-page="mail"><span class="ic">✉</span> Posteingang <span class="cnt" id="navMailN"></span></a>
       <a data-page="cal"><span class="ic">▦</span> Termine</a>
       <a data-page="task"><span class="ic">☐</span> Aufgaben <span class="cnt" id="navTaskN"></span></a>
+      <a data-page="team"><span class="ic">⚇</span> Team</a>
       <a data-page="hist"><span class="ic">⟲</span> Verlauf</a>
     </nav>
     <div class="sb-foot">
@@ -314,7 +346,7 @@
     </div>
 
     <nav class="mtabs" id="mtabs">
-      <a class="on" data-page="home">Übersicht</a><a data-page="mail">Mails</a><a data-page="cal">Termine</a><a data-page="task">Aufgaben</a><a data-page="hist">Verlauf</a>
+      <a class="on" data-page="home">Übersicht</a><a data-page="mail">Mails</a><a data-page="cal">Termine</a><a data-page="task">Aufgaben</a><a data-page="team">Team</a><a data-page="hist">Verlauf</a>
     </nav>
 
     <div class="view" id="viewHome">
@@ -324,6 +356,7 @@
         <div class="chip"><span class="big" id="bigClock">--:--</span></div>
         <div class="chip" id="wxChip"><b id="wxTemp">—°</b><span id="wxLine">Wetter lädt …</span><span id="wxCity" style="color:var(--ink3)"></span></div>
         <div class="chip"><span>Antwort</span><b id="lat">—</b></div>
+        <span class="whopill" id="whoPill" title="Wer gerade antwortet — klicken zum Wechseln">Jarvis</span>
         <div class="miccluster">
           <div class="micstate"><span class="state" id="stateName">Bereit</span><span class="lvl"><i id="bVol"></i></span><span class="srclbl" id="audioSrc">BEREIT</span></div>
           <button class="mic" id="micBtn" aria-label="Gespräch starten/stoppen" aria-pressed="false">
@@ -413,6 +446,11 @@
     <div class="view" id="viewTask" hidden>
       <div class="ph"><h2>Aufgaben</h2><span class="pill" id="taskCount">lädt …</span><span class="sp"></span><button class="btn" id="taskReload">Aktualisieren</button></div>
       <div class="lists" id="lists"><div class="card empty">Hole Erinnerungen …</div></div>
+    </div>
+
+    <div class="view" id="viewTeam" hidden>
+      <div class="ph"><h2>Team</h2><span class="pill" id="teamHint">gemeinsames Gedächtnis</span><span class="sp"></span><button class="btn" id="teamReload">Aktualisieren</button></div>
+      <div class="tree" id="tree"><div class="card empty">Lade Team …</div></div>
     </div>
 
     <div class="view" id="viewHist" hidden>
@@ -791,16 +829,16 @@
     if (key === "success") { spawnImpulse(2.2,0,1.6); autoTimer = setTimeout(function () { setState("idle"); }, 2200); }
     if (key === "error")   { spawnImpulse(1.6,1,1.2); autoTimer = setTimeout(function () { setState("idle"); }, 4200); }
   }
-  function addLine(who, text, animate) {
+  function addLine(whoLabel, text, animate) {
     var div = document.createElement("div");
-    div.className = "line " + (who === "Jarvis" ? "j" : "me");
+    div.className = "line " + (whoLabel === "Chef" ? "me" : "j");
     var txt = (animate && !reduce)
       ? '<span class="txt">' + text.split(" ").map(function (w, k) { return '<span class="w" style="animation-delay:' + (k*.18).toFixed(2) + 's"> ' + esc(w) + '</span>'; }).join("") + '</span>'
       : '<span class="txt">' + esc(text) + '</span>';
-    div.innerHTML = '<span class="who">' + who + '</span>' + txt;
+    div.innerHTML = '<span class="who">' + esc(whoLabel) + '</span>' + txt;
     var think = document.getElementById("thinking"); if (think) think.remove();
     bubbles.appendChild(div);
-    histAdd(who, text);
+    histAdd(whoLabel, text);
     while (bubbles.children.length > 40) bubbles.removeChild(bubbles.firstChild);
     bubbles.scrollTop = bubbles.scrollHeight;
   }
@@ -905,7 +943,7 @@
     }
     busy = true; setState("processing");
     var t0 = Date.now();
-    fetch("/api/talk", { method:"POST", body:blob })
+    fetch("/api/talk?who=" + encodeURIComponent(who), { method:"POST", body:blob })
       .then(function (r) { return r.json().then(function (j) { return { ok:r.ok, j:j }; }); })
       .then(function (res) {
         busy = false;
@@ -914,7 +952,7 @@
         if (!res.j.transcript) { resumeListen(); return; }
         rounds++; sbCount.textContent = rounds;
         addLine("Chef", res.j.transcript, false);
-        addLine("Jarvis", res.j.reply, true);
+        addLine(res.j.name || whoName(), res.j.reply, true);
         setTimeout(loadDashboard, 5000);
         if (res.j.audio_b64) {
           var el = new Audio("data:audio/mpeg;base64,"+res.j.audio_b64);
@@ -933,7 +971,7 @@
   function showThinking() {
     var d = document.createElement("div");
     d.className = "line j think"; d.id = "thinking";
-    d.innerHTML = '<span class="who">Jarvis</span><span class="txt">denkt nach …</span>';
+    d.innerHTML = '<span class="who">' + esc(whoName()) + '</span><span class="txt">denkt nach …</span>';
     bubbles.appendChild(d); bubbles.scrollTop = bubbles.scrollHeight;
   }
   chatForm.addEventListener("submit", function (e) {
@@ -944,20 +982,20 @@
     addLine("Chef", text, false);
     showThinking();
     chatSend.disabled = true;
-    fetch("/api/ask", { method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify({ text:text }) })
+    fetch("/api/ask", { method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify({ text:text, who:who }) })
       .then(function (r) { return r.json(); })
       .then(function (res) {
         chatSend.disabled = false;
         var t = document.getElementById("thinking"); if (t) t.remove();
-        if (res.error) { addLine("Jarvis", "Das hat nicht geklappt: " + res.error, false); return; }
-        addLine("Jarvis", res.reply, false);
+        if (res.error) { addLine(whoName(), "Das hat nicht geklappt: " + res.error, false); return; }
+        addLine(res.name || whoName(), res.reply, false);
         rounds++; sbCount.textContent = rounds;
         setTimeout(loadDashboard, 5000);
       })
       .catch(function (err) {
         chatSend.disabled = false;
         var t = document.getElementById("thinking"); if (t) t.remove();
-        addLine("Jarvis", "Brücke nicht erreichbar (" + err + ")", false);
+        addLine(whoName(), "Brücke nicht erreichbar (" + err + ")", false);
       });
   });
 
@@ -1059,8 +1097,76 @@
     }).catch(function () { $("mailview").innerHTML = '<div class="empty">Konnte die Mail nicht laden.</div>'; });
   });
 
+  /* ============ Team: wer gerade antwortet ============ */
+  var team = [], voices = [], who = "jarvis";
+  try { who = localStorage.getItem("jarvisWho") || "jarvis"; } catch (e) {}
+  function mateOf(id) { for (var i = 0; i < team.length; i++) if (team[i].id === id) return team[i]; return team[0] || { id:"jarvis", name:"Jarvis" }; }
+  function whoName() { var m = mateOf(who); return m ? m.name : "Jarvis"; }
+  function initials(n) { return (n || "?").trim().slice(0, 2).toUpperCase(); }
+
+  function setWho(id) {
+    who = id;
+    try { localStorage.setItem("jarvisWho", id); } catch (e) {}
+    var m = mateOf(id);
+    $("whoPill").textContent = m.name;
+    $("chatInput").placeholder = m.name + " etwas schreiben …";
+    document.querySelectorAll(".mate").forEach(function (el) { el.classList.toggle("on", el.dataset.id === id); });
+    document.querySelectorAll(".mate .pickbtn").forEach(function (b) { b.textContent = b.closest(".mate").dataset.id === id ? "aktiv" : "auswählen"; });
+  }
+  $("whoPill").addEventListener("click", function () { showPage("team"); });
+
+  function voiceOptions(sel) {
+    if (!Array.isArray(voices)) return '<option value="">Stimmen nicht abrufbar</option>';
+    var o = '<option value="">— ohne Stimme (nur Text) —</option>';
+    for (var i = 0; i < voices.length; i++) {
+      o += '<option value="' + esc(voices[i].id) + '"' + (voices[i].id === sel ? " selected" : "") + '>' + esc(voices[i].name) + (voices[i].desc ? " · " + esc(voices[i].desc) : "") + '</option>';
+    }
+    return o;
+  }
+  function mateCard(m) {
+    return '<div class="mate' + (m.id === who ? " on" : "") + '" data-id="' + m.id + '">' +
+      '<div class="top"><span class="ava">' + esc(initials(m.name)) + '</span>' +
+      '<span><h3>' + esc(m.name) + '</h3><span class="role">' + esc(m.role) + '</span></span></div>' +
+      '<p>' + esc(m.desc) + '</p>' +
+      (m.voice_id ? "" : '<span class="novoice">Noch keine Stimme — antwortet nur schriftlich.</span>') +
+      '<div class="foot"><select data-vid="' + m.id + '">' + voiceOptions(m.voice_id) + '</select>' +
+      '<button class="pickbtn">' + (m.id === who ? "aktiv" : "auswählen") + '</button></div></div>';
+  }
+  function renderTeam() {
+    if (!team.length) { $("tree").innerHTML = '<div class="card empty">Kein Team geladen.</div>'; return; }
+    var lead = team.filter(function (m) { return m.lead; })[0] || team[0];
+    var rest = team.filter(function (m) { return m !== lead; });
+    $("tree").innerHTML =
+      '<div class="lead">' + mateCard(lead) + '</div>' +
+      (rest.length ? '<div class="stem"></div><div class="branch">' + rest.map(mateCard).join("") + '</div>' : "");
+    setWho(who);
+  }
+  function loadTeam() {
+    fetch("/api/team").then(function (r) { return r.json(); }).then(function (d) {
+      team = d.team || []; voices = d.voices || [];
+      if (!mateOf(who) || mateOf(who).id !== who) who = "jarvis";
+      renderTeam();
+      $("teamHint").textContent = Array.isArray(voices) ? voices.length + " Stimmen verfügbar" : "Stimmen nicht abrufbar";
+    }).catch(function () { $("tree").innerHTML = '<div class="card empty">Brücke nicht erreichbar.</div>'; });
+  }
+  $("teamReload").addEventListener("click", loadTeam);
+  $("tree").addEventListener("click", function (e) {
+    var b = e.target.closest(".pickbtn"); if (!b) return;
+    setWho(b.closest(".mate").dataset.id);
+  });
+  $("tree").addEventListener("change", function (e) {
+    var sel = e.target.closest("select[data-vid]"); if (!sel) return;
+    var m = mateOf(sel.dataset.vid);
+    m.voice_id = sel.value;
+    m.voice_name = sel.value ? sel.options[sel.selectedIndex].textContent.split(" · ")[0] : "";
+    fetch("/api/team", { method:"POST", headers:{ "Content-Type":"application/json" }, body:JSON.stringify({ team:team }) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { if (d.team) { team = d.team; renderTeam(); toast("Stimme gespeichert für " + m.name); } })
+      .catch(function () { toast("Konnte die Stimme nicht speichern"); });
+  });
+
   /* ============ Seiten ============ */
-  var PAGES = { home:"viewHome", mail:"viewMail", cal:"viewCal", task:"viewTask", hist:"viewHist" };
+  var PAGES = { home:"viewHome", mail:"viewMail", cal:"viewCal", task:"viewTask", team:"viewTeam", hist:"viewHist" };
   var page = "home", loaded = {};
   function showPage(p) {
     if (!PAGES[p]) p = "home";
@@ -1073,6 +1179,7 @@
     if (p === "mail" && !loaded.mail) { loadMails(); loadFollowups(); }
     if (p === "cal" && !loaded.cal) loadWeek();
     if (p === "task" && !loaded.task) loadTasks();
+    if (p === "team" && !loaded.team) { loadTeam(); loaded.team = true; }
     if (p === "hist") renderHist();
   }
   document.addEventListener("click", function (e) {
@@ -1187,7 +1294,7 @@
       var lbl = d.toDateString() === new Date().toDateString() ? "Heute" : TAGE[d.getDay()] + ", " + d.getDate() + ". " + MON[d.getMonth()];
       return '<div class="card hday"><h3>' + lbl + '</h3>' + day.items.map(function (x) {
         var t = new Date(x.t);
-        return '<div class="line ' + (x.who === "Jarvis" ? 'j' : 'me') + '"><span class="who">' + esc(x.who) + '<span class="ts">' + pad(t.getHours()) + ':' + pad(t.getMinutes()) + '</span></span><span class="txt">' + esc(x.text) + '</span></div>';
+        return '<div class="line ' + (x.who === "Chef" ? 'me' : 'j') + '"><span class="who">' + esc(x.who) + '<span class="ts">' + pad(t.getHours()) + ':' + pad(t.getMinutes()) + '</span></span><span class="txt">' + esc(x.text) + '</span></div>';
       }).join("") + '</div>';
     }).join("");
   }
@@ -1260,6 +1367,7 @@
   function loadDashboard() { fetch("/api/dashboard").then(function (r) { return r.json(); }).then(renderDashboard).catch(function () {}); }
   loadDashboard(); setInterval(loadDashboard, 60000);
   loadFollowups(); setInterval(loadFollowups, 600000);
+  loadTeam(); loaded.team = true;
 
   var bridgeEl = $("bridge"), bridgeDot = $("bridgeDot");
   fetch("/api/health").then(function (r) { return r.json(); }).then(function (j) {
