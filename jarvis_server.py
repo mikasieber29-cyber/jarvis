@@ -856,7 +856,7 @@ def briefing_text(name):
 INTRO_TRACK = os.environ.get("JARVIS_INTRO_TRACK", "spotify:track:08mG3Y1vljYA6bvDt4Wqkj")
 MUSIK_LAUT = int(os.environ.get("JARVIS_MUSIK_LAUT", "100"))    # Intro
 MUSIK_LEISE = int(os.environ.get("JARVIS_MUSIK_LEISE", "65"))  # während gesprochen wird
-_musik = {"lief": False, "vol": None}
+_musik = {"lief": False, "vol": None, "lauf": 0}
 
 
 def _osa(script, timeout=8):
@@ -874,11 +874,14 @@ def spotify_da():
 
 
 def musik_start():
-    """Song von vorne, laut. Merkt sich die alte Lautstärke."""
-    try:
-        _musik["vol"] = int(_osa('tell application "Spotify" to return sound volume') or "70")
-    except Exception:
-        _musik["vol"] = None
+    """Song von vorne, laut. Merkt sich die alte Lautstärke.
+    Beliebig oft hintereinander: ein laufendes Ausblenden wird abgebrochen."""
+    _musik["lauf"] += 1                          # bricht ein laufendes Ausblenden ab
+    if not _musik["lief"]:                       # eigene Lautstärke nur einmal merken
+        try:
+            _musik["vol"] = int(_osa('tell application "Spotify" to return sound volume') or "70")
+        except Exception:
+            _musik["vol"] = None
     _osa('tell application "Spotify"\n'
          'activate\n'
          f'set sound volume to {MUSIK_LAUT}\n'
@@ -893,21 +896,26 @@ def musik_leiser():
     return {"ok": True}
 
 
-def _ausblenden():
+def _ausblenden(marke):
     try:
-        for v in range(MUSIK_LEISE, -1, -3):
+        for v in range(MUSIK_LEISE, -1, -4):
+            if _musik["lauf"] != marke:          # neues Briefing gestartet → abbrechen
+                return
             _osa(f'tell application "Spotify" to set sound volume to {max(v, 0)}')
             time.sleep(0.12)
+        if _musik["lauf"] != marke:
+            return
         _osa('tell application "Spotify" to pause')
         if _musik.get("vol"):
             _osa(f'tell application "Spotify" to set sound volume to {_musik["vol"]}')
+        _musik["lief"] = False
     except Exception as e:
         print(f"  Musik-Ausblenden: {e}")
-    _musik["lief"] = False
+        _musik["lief"] = False
 
 
 def musik_stop():
-    threading.Thread(target=_ausblenden, daemon=True).start()
+    threading.Thread(target=_ausblenden, args=(_musik["lauf"],), daemon=True).start()
     return {"ok": True}
 
 
