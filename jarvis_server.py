@@ -18,6 +18,7 @@ import base64
 import datetime
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -851,6 +852,170 @@ def briefing_text(name):
     return " ".join(teile)
 
 
+# ---------------------------------------------------------------- Beiträge (LinkedIn)
+
+POST_FILE = os.path.join(APP_DIR, "posts.json")
+LI_TOKEN_FILE = os.path.join(HOME, ".hermes", "linkedin_token.json")
+LI_ID = ENV.get("LINKEDIN_CLIENT_ID", "")
+LI_SECRET = ENV.get("LINKEDIN_CLIENT_SECRET", "")
+LI_REDIRECT = f"http://localhost:{PORT}/api/linkedin/callback"
+
+POST_HINT = (
+    "Du schreibst einen LinkedIn-Beitrag für Mika. Er führt mit Nicola und Timo "
+    "eine kleine Agentur für Webdesign und Content (trendingmedia.ch) in der Schweiz. "
+    "Schreib auf Deutsch, in der Ich-Form, wie Mika selbst spricht: klar, "
+    "bodenständig, ohne Werbefloskeln und ohne Übertreibungen. Kein Markdown, "
+    "keine Sternchen, keine Überschriften. Erster Satz muss neugierig machen. "
+    "Kurze Absätze, 120 bis 200 Wörter. Am Schluss eine echte Frage an die Leser "
+    "und höchstens drei passende Hashtags. Gib NUR den Beitrag aus, keine Erklärung."
+)
+
+
+def load_posts():
+    try:
+        with open(POST_FILE) as f:
+            d = json.load(f)
+        return d if isinstance(d, list) else []
+    except Exception:
+        return []
+
+
+def save_posts(liste):
+    with open(POST_FILE, "w") as f:
+        json.dump(liste[-60:], f, ensure_ascii=False, indent=1)
+    return liste
+
+
+def post_neu(thema, plattform="linkedin"):
+    text = ask_hermes(f"Thema: {thema}", POST_HINT)
+    p = {
+        "id": str(int(time.time() * 1000)),
+        "plattform": plattform,
+        "thema": thema,
+        "text": text,
+        "status": "entwurf",
+        "erstellt": datetime.datetime.now().astimezone().isoformat(timespec="seconds"),
+        "url": "",
+    }
+    liste = load_posts()
+    liste.append(p)
+    save_posts(liste)
+    return p
+
+
+def post_aendern(pid, anweisung):
+    liste = load_posts()
+    for p in liste:
+        if p["id"] == pid:
+            p["text"] = ask_hermes(
+                "Hier ist der bisherige Beitrag:\n\n" + p["text"] +
+                "\n\nÄndere ihn so: " + anweisung, POST_HINT)
+            save_posts(liste)
+            return p
+    raise RuntimeError("Beitrag nicht gefunden")
+
+
+def li_token():
+    """Gültiges Zugangs-Token holen; erneuert sich still, solange der
+    Erneuerungsschlüssel gilt (ein Jahr)."""
+    try:
+        with open(LI_TOKEN_FILE) as f:
+            t = json.load(f)
+    except Exception:
+        return None
+    if t.get("expires_at", 0) > time.time() + 120:
+        return t
+    if not (t.get("refresh_token") and LI_ID and LI_SECRET):
+        return None
+    daten = urllib.parse.urlencode({
+        "grant_type": "refresh_token",
+        "refresh_token": t["refresh_token"],
+        "client_id": LI_ID,
+        "client_secret": LI_SECRET,
+    }).encode()
+    req = urllib.request.Request("https://www.linkedin.com/oauth/v2/accessToken", data=daten)
+    with urllib.request.urlopen(req, timeout=20) as r:
+        neu = json.loads(r.read())
+    t["access_token"] = neu["access_token"]
+    t["expires_at"] = time.time() + int(neu.get("expires_in", 5184000))
+    if neu.get("refresh_token"):
+        t["refresh_token"] = neu["refresh_token"]
+    with open(LI_TOKEN_FILE, "w") as f:
+        json.dump(t, f)
+    os.chmod(LI_TOKEN_FILE, 0o600)
+    return t
+
+
+def li_status():
+    if not (LI_ID and LI_SECRET):
+        return {"bereit": False, "grund": "LINKEDIN_CLIENT_ID/SECRET fehlen in ~/.hermes/.env"}
+    t = li_token()
+    if not t:
+        return {"bereit": False, "grund": "noch nicht angemeldet", "start": "/api/linkedin/start"}
+    return {"bereit": True, "name": t.get("name", ""), "bis": int(t.get("expires_at", 0))}
+
+
+def li_veroeffentlichen(text):
+    t = li_token()
+    if not t:
+        raise RuntimeError("kein LinkedIn-Zugang — zuerst anmelden")
+    koerper = json.dumps({
+        "author": "urn:li:person:" + t["sub"],
+        "lifecycleState": "PUBLISHED",
+        "specificContent": {
+            "com.linkedin.ugc.ShareContent": {
+                "shareCommentary": {"text": text},
+                "shareMediaCategory": "NONE",
+            }
+        },
+        "visibility": {"com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"},
+    }).encode()
+    req = urllib.request.Request(
+        "https://api.linkedin.com/v2/ugcPosts", data=koerper,
+        headers={"Authorization": "Bearer " + t["access_token"],
+                 "Content-Type": "application/json",
+                 "X-Restli-Protocol-Version": "2.0.0"})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        kopf = dict(r.getheaders())
+        urn = kopf.get("x-restli-id") or kopf.get("X-RestLi-Id") or ""
+    return "https://www.linkedin.com/feed/update/" + urn if urn else ""
+
+
+def post_freigeben(pid):
+    """Wird NUR nach ausdrücklicher Freigabe im Interface aufgerufen."""
+    liste = load_posts()
+    for p in liste:
+        if p["id"] == pid:
+            if p["status"] == "veroeffentlicht":
+                return p
+            p["url"] = li_veroeffentlichen(p["text"])
+            p["status"] = "veroeffentlicht"
+            p["gepostet"] = datetime.datetime.now().astimezone().isoformat(timespec="seconds")
+            save_posts(liste)
+            return p
+    raise RuntimeError("Beitrag nicht gefunden")
+
+
+# Sprachbefehl: "schreib einen Post über ..." (Wortstellung egal)
+WORT_POST = re.compile(r"\b(post|posting|beitrag|beiträge)\b", re.I)
+WORT_TU = re.compile(r"\b(schreib\w*|erstell\w*|verfass\w*|formulier\w*|entwirf|mach\w*)\b", re.I)
+WORT_THEMA = re.compile(r"\b(?:über|ueber|zu|zum|zur|wegen|thema)\s+(.{2,})$", re.I)
+
+
+def ist_postauftrag(text):
+    t = (text or "").strip().rstrip(".!?,")
+    if not t:
+        return None
+    t = _ohne_namen(t.lower())                  # "Jarvis, schreib mir …" → "schreib mir …"
+    if not (WORT_POST.search(t) and WORT_TU.search(t)):
+        return None
+    if re.search(r"\b(mail|email|e-mail|nachricht|aufgabe|erinnerung)\b", t):
+        return None                             # das ist etwas anderes
+    m = WORT_THEMA.search(t)
+    thema = m.group(1).strip(" .!?,") if m else ""
+    return thema or "ein aktuelles Thema aus meiner Arbeit"
+
+
 # ---------------------------------------------------------------- Musik (Spotify)
 
 INTRO_TRACK = os.environ.get("JARVIS_INTRO_TRACK", "spotify:track:08mG3Y1vljYA6bvDt4Wqkj")
@@ -996,6 +1161,52 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, daten, typ)
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)[:120]}).encode())
+        elif self.path.startswith("/api/posts"):
+            self._send(200, json.dumps({"posts": load_posts()[::-1],
+                                        "linkedin": li_status()}).encode())
+        elif self.path.startswith("/api/linkedin/start"):
+            if not (LI_ID and LI_SECRET):
+                self._send(200, json.dumps({"error": "LINKEDIN_CLIENT_ID/SECRET fehlen in ~/.hermes/.env"}).encode())
+                return
+            url = ("https://www.linkedin.com/oauth/v2/authorization?response_type=code"
+                   f"&client_id={urllib.parse.quote(LI_ID)}"
+                   f"&redirect_uri={urllib.parse.quote(LI_REDIRECT)}"
+                   "&scope=" + urllib.parse.quote("openid profile w_member_social"))
+            self.send_response(302)
+            self.send_header("Location", url)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+        elif self.path.startswith("/api/linkedin/callback"):
+            q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            code = (q.get("code") or [""])[0]
+            if not code:
+                self._send(400, b"kein Code von LinkedIn erhalten", "text/plain; charset=utf-8")
+                return
+            try:
+                daten = urllib.parse.urlencode({
+                    "grant_type": "authorization_code", "code": code,
+                    "redirect_uri": LI_REDIRECT,
+                    "client_id": LI_ID, "client_secret": LI_SECRET}).encode()
+                req = urllib.request.Request("https://www.linkedin.com/oauth/v2/accessToken", data=daten)
+                with urllib.request.urlopen(req, timeout=20) as r:
+                    t = json.loads(r.read())
+                t["expires_at"] = time.time() + int(t.get("expires_in", 5184000))
+                req2 = urllib.request.Request("https://api.linkedin.com/v2/userinfo",
+                                              headers={"Authorization": "Bearer " + t["access_token"]})
+                with urllib.request.urlopen(req2, timeout=20) as r:
+                    me = json.loads(r.read())
+                t["sub"] = me.get("sub", "")
+                t["name"] = me.get("name", "")
+                with open(LI_TOKEN_FILE, "w") as f:
+                    json.dump(t, f)
+                os.chmod(LI_TOKEN_FILE, 0o600)
+                self._send(200, ("<meta charset='utf-8'><body style='font:16px system-ui;padding:40px'>"
+                                 f"<h2>LinkedIn verbunden</h2><p>Angemeldet als {me.get('name','')}. "
+                                 "Du kannst dieses Fenster schliessen.</p>").encode(),
+                           "text/html; charset=utf-8")
+            except urllib.error.HTTPError as e:
+                self._send(502, ("LinkedIn-Fehler: " + e.read().decode(errors="replace")[:400]).encode(),
+                           "text/plain; charset=utf-8")
         elif self.path.startswith("/vorschau"):
             try:
                 with open(os.path.join(APP_DIR, "kopf-vorschau.html"), "rb") as f:
@@ -1026,6 +1237,39 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 self._send(200, json.dumps({"ok": False, "error": str(e)[:200]}).encode())
             return
+        if self.path.startswith("/api/post/"):
+            try:
+                n = int(self.headers.get("Content-Length", "0"))
+                body = json.loads(self.rfile.read(n) or b"{}")
+                was = self.path.split("/api/post/", 1)[1].split("?")[0]
+                if was == "neu":
+                    res = post_neu(body.get("thema", "").strip() or "meine Arbeit",
+                                   body.get("plattform", "linkedin"))
+                elif was == "aendern":
+                    res = post_aendern(body.get("id", ""), body.get("anweisung", "kürzer"))
+                elif was == "text":
+                    liste = load_posts()
+                    res = None
+                    for p in liste:
+                        if p["id"] == body.get("id"):
+                            p["text"] = body.get("text", p["text"]); res = p
+                    save_posts(liste)
+                    if res is None:
+                        raise RuntimeError("Beitrag nicht gefunden")
+                elif was == "freigabe":
+                    # nur nach ausdrücklichem Klick im Interface
+                    res = post_freigeben(body.get("id", ""))
+                elif was == "loeschen":
+                    liste = [p for p in load_posts() if p["id"] != body.get("id")]
+                    save_posts(liste); res = {"ok": True}
+                else:
+                    raise RuntimeError("unbekannt")
+                self._send(200, json.dumps(res).encode())
+            except urllib.error.HTTPError as e:
+                self._send(200, json.dumps({"error": "LinkedIn: " + e.read().decode(errors="replace")[:300]}).encode())
+            except Exception as e:
+                self._send(200, json.dumps({"error": str(e)[:250]}).encode())
+            return
         if self.path == "/api/team":
             try:
                 n = int(self.headers.get("Content-Length", "0"))
@@ -1044,10 +1288,18 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 m, gewechselt = wer_ist_gemeint(text, member(body.get("who")))
                 morgen = ist_morgengruss(text)
-                reply = (briefing_text(m["name"]) if morgen
-                         else ask_hermes(text, m["hint"] + team_kontext() + " " + TEXT_HINT))
+                thema = ist_postauftrag(text)
+                entwurf = None
+                if morgen:
+                    reply = briefing_text(m["name"])
+                elif thema:
+                    entwurf = post_neu(thema)
+                    reply = "Entwurf liegt auf der Seite Beitraege bereit. Lies ihn durch, dann gibst du ihn frei."
+                else:
+                    reply = ask_hermes(text, m["hint"] + team_kontext() + " " + TEXT_HINT)
                 self._send(200, json.dumps({"reply": reply, "who": m["id"], "name": m["name"],
-                                            "switched": gewechselt, "briefing": morgen}).encode())
+                                            "switched": gewechselt, "briefing": morgen,
+                                            "post": entwurf}).encode())
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)[:200]}).encode())
             return
@@ -1091,9 +1343,16 @@ class Handler(BaseHTTPRequestHandler):
             if gewechselt:
                 print(f"  → {who['name']} übernimmt")
             morgen = ist_morgengruss(text)
+            thema = ist_postauftrag(text)
+            entwurf = None
             if morgen:
                 step = "briefing"
                 reply = briefing_text(who["name"])
+            elif thema:
+                step = "beitrag"
+                entwurf = post_neu(thema)
+                reply = ("Ich habe einen Entwurf geschrieben, er liegt auf der Seite Beiträge. "
+                         "Schau ihn dir an — veröffentlicht wird er erst, wenn du ihn freigibst.")
             else:
                 step = "hermes"
                 reply = ask_hermes(text, who["hint"] + team_kontext() + " " + SYSTEM_HINT)
@@ -1110,7 +1369,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, json.dumps({
                 "transcript": text, "reply": reply, "audio_b64": audio_b64,
                 "who": who["id"], "name": who["name"], "switched": gewechselt,
-                "briefing": morgen
+                "briefing": morgen, "post": entwurf
             }).encode())
 
         except urllib.error.HTTPError as e:

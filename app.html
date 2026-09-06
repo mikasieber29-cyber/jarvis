@@ -150,6 +150,26 @@
   .btn:focus-visible { outline:2px solid var(--accline); }
   .btn.acc { background:var(--acc); border-color:var(--acc); color:var(--onacc); font-weight:600; }
   .card { background:var(--card); border:1px solid var(--line); border-radius:14px; }
+  /* Beiträge */
+  .postbar { display:flex; gap:10px; align-items:center; margin-bottom:14px; flex-wrap:wrap; }
+  .postbar input { flex:1; min-width:240px; background:var(--card); border:1px solid var(--line);
+                   color:var(--ink); border-radius:10px; padding:10px 13px; font:400 14px Barlow,sans-serif; }
+  .postbar input:focus { outline:none; border-color:var(--acc); }
+  .pcard { padding:16px 18px; margin-bottom:12px; }
+  .pcard .top { display:flex; align-items:center; gap:10px; margin-bottom:10px; flex-wrap:wrap; }
+  .pcard .thema { font-weight:600; font-size:14.5px; }
+  .pcard .st { font-size:11px; letter-spacing:.08em; text-transform:uppercase; padding:3px 9px;
+               border-radius:999px; border:1px solid var(--line); color:var(--ink2); }
+  .pcard .st.raus { border-color:var(--acc); color:var(--acc); }
+  .pcard textarea { width:100%; min-height:190px; resize:vertical; background:var(--bg);
+                    border:1px solid var(--line); border-radius:10px; color:var(--ink);
+                    padding:12px 14px; font:400 14.5px/1.62 Barlow,sans-serif; }
+  .pcard textarea:focus { outline:none; border-color:var(--acc); }
+  .pcard .akt { display:flex; gap:8px; margin-top:11px; flex-wrap:wrap; align-items:center; }
+  .pcard .zeichen { color:var(--ink2); font-size:12.5px; margin-left:auto; }
+  .lihint { font-size:13px; color:var(--ink2); }
+  .lihint a { color:var(--acc); }
+
   .empty { padding:26px; text-align:center; color:var(--ink2); font-size:14px; }
 
   /* Posteingang: Liste links, Inhalt rechts */
@@ -333,6 +353,7 @@
       <a data-page="mail"><span class="ic">✉</span> Posteingang <span class="cnt" id="navMailN"></span></a>
       <a data-page="cal"><span class="ic">▦</span> Termine</a>
       <a data-page="task"><span class="ic">☐</span> Aufgaben <span class="cnt" id="navTaskN"></span></a>
+      <a data-page="post"><span class="ic">✎</span> Beiträge</a>
       <a data-page="team"><span class="ic">⚇</span> Team</a>
       <a data-page="hist"><span class="ic">⟲</span> Verlauf</a>
     </nav>
@@ -352,7 +373,7 @@
     </div>
 
     <nav class="mtabs" id="mtabs">
-      <a class="on" data-page="home">Übersicht</a><a data-page="mail">Mails</a><a data-page="cal">Termine</a><a data-page="task">Aufgaben</a><a data-page="team">Team</a><a data-page="hist">Verlauf</a>
+      <a class="on" data-page="home">Übersicht</a><a data-page="mail">Mails</a><a data-page="cal">Termine</a><a data-page="task">Aufgaben</a><a data-page="post">Beiträge</a><a data-page="team">Team</a><a data-page="hist">Verlauf</a>
     </nav>
 
     <div class="view" id="viewHome">
@@ -452,6 +473,17 @@
     <div class="view" id="viewTask" hidden>
       <div class="ph"><h2>Aufgaben</h2><span class="pill" id="taskCount">lädt …</span><span class="sp"></span><button class="btn" id="taskReload">Aktualisieren</button></div>
       <div class="lists" id="lists"><div class="card empty">Hole Erinnerungen …</div></div>
+    </div>
+
+    <div class="view" id="viewPost" hidden>
+      <div class="ph"><h2>Beiträge</h2><span class="pill" id="liPill">—</span>
+        <span class="more" style="margin-left:0">sag «schreib einen Post über …» — veröffentlicht wird nur, was du freigibst</span>
+        <span class="sp"></span><button class="btn" id="postReload">Aktualisieren</button></div>
+      <div class="postbar">
+        <input id="postThema" placeholder="Worüber soll der Beitrag gehen?">
+        <button class="btn acc" id="postNeu">Entwurf schreiben</button>
+      </div>
+      <div id="postliste"><div class="card empty">Noch keine Entwürfe.</div></div>
     </div>
 
     <div class="view" id="viewTeam" hidden>
@@ -961,6 +993,7 @@
         addLine("Chef", res.j.transcript, false);
         addLine(res.j.name || whoName(), res.j.reply, true);
         setTimeout(loadDashboard, 5000);
+        if (res.j.post) { toast("Entwurf liegt unter Beiträge bereit"); if (page === "post") loadPosts(); }
         if (res.j.audio_b64) sprich(res.j.audio_b64, !!res.j.briefing, resumeListen);
         else resumeListen();
       })
@@ -1209,6 +1242,98 @@
       (rest.length ? '<div class="stem"></div><div class="branch">' + rest.map(mateCard).join("") + '</div>' : "");
     setWho(who);
   }
+  /* ---- Beiträge: schreiben, ändern, freigeben ---- */
+  var posts = [], liBereit = false;
+
+  function postKarte(p) {
+    var raus = p.status === "veroeffentlicht";
+    return '<div class="card pcard" data-id="' + esc(p.id) + '">' +
+      '<div class="top"><span class="thema">' + esc(p.thema) + '</span>' +
+      '<span class="st' + (raus ? ' raus' : '') + '">' + (raus ? 'veröffentlicht' : 'Entwurf') + '</span>' +
+      (p.url ? ' <a class="lihint" href="' + esc(p.url) + '" target="_blank" rel="noopener">auf LinkedIn ansehen</a>' : '') +
+      '</div>' +
+      '<textarea class="ptext"' + (raus ? ' readonly' : '') + '>' + esc(p.text) + '</textarea>' +
+      '<div class="akt">' +
+      (raus ? '' :
+        '<button class="btn acc" data-tu="frei">Freigeben und posten</button>' +
+        '<button class="btn" data-tu="kuerzer">Kürzer</button>' +
+        '<button class="btn" data-tu="lockerer">Lockerer</button>' +
+        '<button class="btn" data-tu="neu">Neu schreiben</button>' +
+        '<button class="btn" data-tu="sichern">Änderung sichern</button>') +
+      '<button class="btn" data-tu="weg">Löschen</button>' +
+      '<span class="zeichen">' + p.text.length + ' Zeichen</span></div></div>';
+  }
+
+  function zeigePosts() {
+    $("postliste").innerHTML = posts.length
+      ? posts.map(postKarte).join("")
+      : '<div class="card empty">Noch keine Entwürfe. Sag «schreib einen Post über …» oder tipp oben ein Thema.</div>';
+  }
+
+  function loadPosts() {
+    fetch("/api/posts").then(function (r) { return r.json(); }).then(function (d) {
+      posts = d.posts || [];
+      var li = d.linkedin || {};
+      liBereit = !!li.bereit;
+      $("liPill").textContent = liBereit ? ("LinkedIn: " + (li.name || "verbunden")) : "LinkedIn nicht verbunden";
+      $("liPill").style.color = liBereit ? "" : "var(--ink2)";
+      zeigePosts();
+    }).catch(function () { $("postliste").innerHTML = '<div class="card empty">Brücke nicht erreichbar.</div>'; });
+  }
+
+  function postRuf(weg, daten, fertig) {
+    fetch("/api/post/" + weg, { method:"POST", headers:{"Content-Type":"application/json"},
+                                body: JSON.stringify(daten) })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (j.error) { toast(j.error.slice(0, 120)); loadPosts(); return; }
+        fertig && fertig(j);
+      })
+      .catch(function () { toast("Brücke nicht erreichbar"); });
+  }
+
+  function neuerPost() {
+    var thema = $("postThema").value.trim();
+    if (!thema) { $("postThema").focus(); return; }
+    $("postNeu").disabled = true; $("postNeu").textContent = "schreibt …";
+    postRuf("neu", { thema: thema }, function () {
+      $("postThema").value = ""; loadPosts();
+    });
+    setTimeout(function () { $("postNeu").disabled = false; $("postNeu").textContent = "Entwurf schreiben"; }, 400);
+  }
+  $("postNeu").addEventListener("click", neuerPost);
+  $("postThema").addEventListener("keydown", function (e) { if (e.key === "Enter") neuerPost(); });
+  $("postReload").addEventListener("click", loadPosts);
+
+  $("postliste").addEventListener("click", function (e) {
+    var b = e.target.closest("[data-tu]"); if (!b) return;
+    var karte = b.closest(".pcard"), id = karte.dataset.id;
+    var text = karte.querySelector(".ptext").value;
+    var tu = b.dataset.tu;
+
+    if (tu === "weg") {
+      if (!confirm("Diesen Beitrag löschen?")) return;
+      postRuf("loeschen", { id: id }, loadPosts); return;
+    }
+    if (tu === "sichern") { postRuf("text", { id: id, text: text }, loadPosts); return; }
+    if (tu === "frei") {
+      if (!liBereit) { toast("LinkedIn ist noch nicht verbunden — siehe Anleitung"); return; }
+      if (!confirm("Diesen Beitrag jetzt auf LinkedIn veröffentlichen?\n\nDanach steht er öffentlich in deinem Profil.")) return;
+      b.disabled = true; b.textContent = "postet …";
+      postRuf("text", { id: id, text: text }, function () {
+        postRuf("freigabe", { id: id }, function () { toast("Auf LinkedIn veröffentlicht"); loadPosts(); });
+      });
+      return;
+    }
+    var anweisung = tu === "kuerzer" ? "Mach ihn deutlich kürzer, höchstens 100 Wörter."
+                  : tu === "lockerer" ? "Schreib ihn lockerer und persönlicher, weniger Fachsprache."
+                  : "Schreib ihn komplett neu, anderer Aufhänger, gleiches Thema.";
+    b.disabled = true; b.textContent = "…";
+    postRuf("text", { id: id, text: text }, function () {
+      postRuf("aendern", { id: id, anweisung: anweisung }, loadPosts);
+    });
+  });
+
   function loadTeam() {
     fetch("/api/team").then(function (r) { return r.json(); }).then(function (d) {
       team = d.team || []; voices = d.voices || [];
@@ -1261,7 +1386,7 @@
   });
 
   /* ============ Seiten ============ */
-  var PAGES = { home:"viewHome", mail:"viewMail", cal:"viewCal", task:"viewTask", team:"viewTeam", hist:"viewHist" };
+  var PAGES = { home:"viewHome", mail:"viewMail", cal:"viewCal", task:"viewTask", post:"viewPost", team:"viewTeam", hist:"viewHist" };
   var page = "home", loaded = {};
   function showPage(p) {
     if (!PAGES[p]) p = "home";
@@ -1274,6 +1399,7 @@
     if (p === "mail" && !loaded.mail) { loadMails(); loadFollowups(); }
     if (p === "cal" && !loaded.cal) loadWeek();
     if (p === "task" && !loaded.task) loadTasks();
+    if (p === "post") loadPosts();
     if (p === "team" && !loaded.team) { loadTeam(); loaded.team = true; }
     if (p === "hist") renderHist();
   }
