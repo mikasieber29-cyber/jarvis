@@ -996,6 +996,12 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, daten, typ)
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)[:120]}).encode())
+        elif self.path.startswith("/vorschau"):
+            try:
+                with open(os.path.join(APP_DIR, "kopf-vorschau.html"), "rb") as f:
+                    self._send(200, f.read(), "text/html; charset=utf-8")
+            except FileNotFoundError:
+                self._send(404, b"keine kopf-vorschau.html im Jarvis-Ordner", "text/plain")
         elif self.path == "/api/health":
             ok = {"server": True, "elevenlabs": bool(ELEVEN_KEY), "hermes_key": bool(HERMES_KEY)}
             self._send(200, json.dumps(ok).encode())

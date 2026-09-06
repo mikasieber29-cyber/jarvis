@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jarvis — Kopf-Vorschau</title>
+<style>
+  :root { --cy:#7FE9FF; --cy2:#2FB6E8; --or:#FF8A2A; --or2:#FFC46B; }
+  * { box-sizing:border-box; }
+  html,body { height:100%; margin:0; background:#04070D; color:#CFE9F5;
+              font-family:"Barlow","Inter Tight",system-ui,-apple-system,sans-serif; }
+  #wrap { position:fixed; inset:0; }
+  canvas { display:block; width:100%; height:100%; }
+  .hud { position:fixed; z-index:5; font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:#5C8DA6; }
+  .hud.tl { top:18px; left:22px; }
+  .hud.tr { top:18px; right:22px; text-align:right; }
+  .bar { position:fixed; z-index:6; left:50%; bottom:26px; transform:translateX(-50%);
+         display:flex; gap:10px; align-items:center; background:rgba(8,16,26,.82);
+         border:1px solid rgba(127,233,255,.22); border-radius:999px; padding:8px 10px;
+         backdrop-filter:blur(8px); }
+  button { font:inherit; font-size:13px; letter-spacing:.04em; color:#DCF4FF; cursor:pointer;
+           background:rgba(127,233,255,.08); border:1px solid rgba(127,233,255,.28);
+           border-radius:999px; padding:8px 16px; }
+  button:hover { background:rgba(127,233,255,.16); }
+  button.on { background:var(--or); border-color:var(--or); color:#160A00; font-weight:600; }
+  .lab { font-size:11px; letter-spacing:.16em; text-transform:uppercase; color:#5C8DA6; padding:0 8px; }
+  input[type=range] { width:120px; accent-color:var(--or); }
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="c"></canvas></div>
+
+<div class="hud tl">JARVIS · KOPF-VORSCHAU<br><span id="hState" style="color:#7FE9FF">BEREIT</span></div>
+<div class="hud tr">ENTWURF 1<br>CYAN / ORANGE</div>
+
+<div class="bar">
+  <button id="bIdle" class="on">Ruhe</button>
+  <button id="bListen">Zuhören</button>
+  <button id="bSpeak">Sprechen</button>
+  <span class="lab">Mikro</span>
+  <button id="bMic">an</button>
+  <span class="lab">Dreh</span>
+  <input id="rSpin" type="range" min="0" max="100" value="34">
+</div>
+
+<script>
+(function () {
+  var cv = document.getElementById("c"), ctx = cv.getContext("2d"), W = 0, H = 0, DPR = 1;
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = cv.clientWidth; H = cv.clientHeight;
+    cv.width = W * DPR; cv.height = H * DPR;
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+  window.addEventListener("resize", resize);
+
+  /* ---------------- Kopfform: Profil einer Drehfläche ----------------
+     t = -1 (Kinn) … +1 (Scheitel).  r(t) ist die halbe Breite. */
+  var T_UNTEN = -0.94;
+  /* Silhouette als Stützpunkte: [t, halbe Breite] — Scheitel, Stirn, Schläfe,
+     Wange, Kiefer, Kinn. Dazwischen wird weich interpoliert. */
+  var PROFIL = [
+    [ 1.00, 0.12], [ 0.94, 0.40], [ 0.86, 0.63], [ 0.74, 0.80],
+    [ 0.58, 0.92], [ 0.36, 0.99], [ 0.14, 1.00], [-0.10, 0.97],
+    [-0.32, 0.90], [-0.52, 0.79], [-0.70, 0.62], [-0.84, 0.42],
+    [-0.94, 0.26], [-1.00, 0.18]
+  ];
+  function radius(t) {
+    t = Math.max(-1, Math.min(1, t));
+    for (var i = 0; i < PROFIL.length - 1; i++) {
+      var a = PROFIL[i], b = PROFIL[i + 1];
+      if (t <= a[0] && t >= b[0]) {
+        var f = (a[0] - t) / (a[0] - b[0]);
+        f = f * f * (3 - 2 * f);                      // weicher Übergang
+        return a[1] + (b[1] - a[1]) * f;
+      }
+    }
+    return 0.15;
+  }
+  /* Tiefe: Hinterkopf ragt weiter nach hinten als das Gesicht nach vorn */
+  function tiefeVersatz(t) { return -0.10 * Math.max(0, t + 0.2); }
+
+  var RINGE = 22, PRO_RING = 44;
+  var HEAD_W = 0.76, HEAD_D = 0.88, HEAD_H = 1.00;    // Breite / Tiefe / Höhe
+  var Y_KINN = -T_UNTEN * HEAD_H;                     // Bildschirm-y des Kinns
+
+  var netz = [];                                      // Ringe des Kopfes
+  for (var i = 0; i < RINGE; i++) {
+    var t = T_UNTEN + (1 - T_UNTEN) * i / (RINGE - 1);
+    var r = radius(t), ring = [];
+    for (var j = 0; j < PRO_RING; j++) {
+      var a = j / PRO_RING * Math.PI * 2;
+      ring.push({
+        x: Math.cos(a) * r * HEAD_W,
+        y: -t * HEAD_H,                               // Bildschirm: y wächst nach unten
+        z: Math.sin(a) * r * HEAD_D + tiefeVersatz(t),
+        t: t, a: a, r: r
+      });
+    }
+    netz.push(ring);
+  }
+
+  /* Hals */
+  var hals = [];
+  for (var i = 0; i < 5; i++) {
+    var f = i / 4;
+    var y = Y_KINN - 0.08 + f * 0.26, ring = [];
+    var rr = 0.25 + f * 0.09;
+    for (var j = 0; j < PRO_RING; j++) {
+      var a = j / PRO_RING * Math.PI * 2;
+      ring.push({ x: Math.cos(a) * rr, y: y, z: Math.sin(a) * rr * 0.9 - 0.09, t: -1.2, a: a, r: rr });
+    }
+    hals.push(ring);
+  }
+
+  /* Schultern: liegende Ringe, die nach aussen auslaufen (die "Wellen" im Bild) */
+  var schultern = [];
+  for (var i = 0; i < 10; i++) {
+    var f = i / 9;
+    var rr = 0.34 + f * 0.80;
+    var y = Y_KINN + 0.17 + f * 0.42 + Math.pow(f, 2) * 0.22;
+    var ring = [];
+    for (var j = 0; j < 68; j++) {
+      var a = j / 68 * Math.PI * 2;
+      ring.push({ x: Math.cos(a) * rr, y: y, z: Math.sin(a) * rr * 0.52, f: f, a: a });
+    }
+    schultern.push(ring);
+  }
+
+  /* Gehirn: Partikelwolke im Schädel + Verbindungen */
+  var hirn = [];
+  for (var i = 0; i < 150; i++) {
+    var u = Math.random() * Math.PI * 2, v = Math.acos(2 * Math.random() - 1);
+    var rad = 0.16 + Math.pow(Math.random(), .5) * 0.26;
+    hirn.push({
+      x: Math.sin(v) * Math.cos(u) * rad * 1.0,
+      y: -0.30 + Math.cos(v) * rad * 0.78,
+      z: Math.sin(v) * Math.sin(u) * rad * 0.95,
+      s: 0.4 + Math.random() * 0.9,
+      p: Math.random() * Math.PI * 2
+    });
+  }
+
+  /* Staub */
+  var staub = [];
+  for (var i = 0; i < 90; i++) {
+    staub.push({ x:(Math.random()-.5)*5.4, y:(Math.random()-.5)*3.6, z:(Math.random()-.5)*4,
+                 s:Math.random()*.9+.2, p:Math.random()*6.3 });
+  }
+
+  /* ---------------- Zustand ---------------- */
+  var zustand = "idle", amp = 0, zielAmp = 0, spin = 0, tms = 0;
+  var spinRate = 0.34, mund = 0;
+  var mikro = null, analyser = null, fdata = null;
+  var sprechEnde = 0, silbe = 0;
+
+  function setZ(z) {
+    zustand = z;
+    document.getElementById("hState").textContent =
+      z === "idle" ? "BEREIT" : z === "listen" ? "HÖRT ZU" : "SPRICHT";
+    ["bIdle","bListen","bSpeak"].forEach(function (id) { document.getElementById(id).classList.remove("on"); });
+    document.getElementById(z === "idle" ? "bIdle" : z === "listen" ? "bListen" : "bSpeak").classList.add("on");
+    if (z === "speak") sprechEnde = performance.now() + 6000;
+  }
+  document.getElementById("bIdle").onclick = function () { setZ("idle"); };
+  document.getElementById("bListen").onclick = function () { setZ("listen"); };
+  document.getElementById("bSpeak").onclick = function () { setZ("speak"); };
+  document.getElementById("rSpin").oninput = function () { spinRate = this.value / 100; };
+
+  document.getElementById("bMic").onclick = function () {
+    var b = this;
+    if (mikro) { mikro.getTracks().forEach(function (t) { t.stop(); }); mikro = null; analyser = null; b.textContent = "an"; b.classList.remove("on"); return; }
+    navigator.mediaDevices.getUserMedia({ audio:true }).then(function (s) {
+      mikro = s;
+      var ac = new (window.AudioContext || window.webkitAudioContext)();
+      var src = ac.createMediaStreamSource(s);
+      analyser = ac.createAnalyser(); analyser.fftSize = 256;
+      src.connect(analyser); fdata = new Uint8Array(analyser.frequencyBinCount);
+      b.textContent = "aus"; b.classList.add("on"); setZ("speak"); sprechEnde = 1e15;
+    }).catch(function () { b.textContent = "geht nicht"; });
+  };
+
+  /* ---------------- Projektion ---------------- */
+  var cam = { d: 5.2, f: 0 };
+  function proj(p, cs, sn, cx, cy, sc) {
+    var x = p.x * cs - p.z * sn, z = p.x * sn + p.z * cs;
+    var k = cam.d / (cam.d - z);
+    return { X: cx + x * sc * k, Y: cy + p.y * sc * k, k: k, z: z };
+  }
+
+  function linie(a, b, farbe, alpha, breite) {
+    ctx.strokeStyle = farbe; ctx.globalAlpha = alpha; ctx.lineWidth = breite;
+    ctx.beginPath(); ctx.moveTo(a.X, a.Y); ctx.lineTo(b.X, b.Y); ctx.stroke();
+  }
+
+  /* ---------------- Bild ---------------- */
+  function frame(now) {
+    var dt = Math.min(50, now - tms) / 1000; tms = now;
+    spin += dt * spinRate * 0.55;
+
+    /* Lautstärke */
+    if (analyser) {
+      analyser.getByteFrequencyData(fdata);
+      var sum = 0; for (var i = 0; i < 40; i++) sum += fdata[i];
+      zielAmp = Math.min(1, sum / 40 / 120);
+    } else if (zustand === "speak") {
+      if (now > sprechEnde) { setZ("idle"); zielAmp = 0; }
+      else {                                       // künstliche Silben, damit man die Mundbewegung sieht
+        silbe += dt * (5.5 + Math.sin(now / 900) * 1.6);
+        var s = Math.abs(Math.sin(silbe)) * (0.55 + 0.45 * Math.abs(Math.sin(silbe * 0.37)));
+        zielAmp = 0.15 + s * 0.85;
+      }
+    } else zielAmp = zustand === "listen" ? 0.10 + Math.sin(now / 420) * 0.05 : 0.05;
+    amp += (zielAmp - amp) * (zielAmp > amp ? 0.35 : 0.10);
+    mund += (amp - mund) * 0.45;
+
+    var cs = Math.cos(spin), sn = Math.sin(spin);
+    var cx = W / 2, cy = H * 0.36;
+    var sc = Math.min(W * 0.17, H * 0.21);
+    var puls = 1 + Math.sin(now / 1300) * 0.012 + amp * 0.03;
+
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ctx.globalCompositeOperation = "source-over";
+    ctx.fillStyle = "#04070D"; ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = "lighter";
+
+    /* Staub */
+    for (var i = 0; i < staub.length; i++) {
+      var d = staub[i], p = proj(d, cs, sn, cx, cy, sc);
+      ctx.globalAlpha = 0.10 + 0.16 * Math.abs(Math.sin(now / 2200 + d.p));
+      ctx.fillStyle = "#7FE9FF";
+      ctx.fillRect(p.X, p.Y, d.s * p.k, d.s * p.k);
+    }
+
+    /* Schultern */
+    for (var i = 0; i < schultern.length; i++) {
+      var ring = schultern[i], vorher = null, erst = null;
+      var wob = Math.sin(now / 1100 - i * 0.5) * 0.012 * (1 + amp * 2);
+      for (var j = 0; j < ring.length; j++) {
+        var q = ring[j];
+        var p = proj({ x:q.x*(1+wob), y:q.y+wob*0.6, z:q.z*(1+wob) }, cs, sn, cx, cy, sc);
+        if (vorher) linie(vorher, p, "#2FB6E8", (0.34 - i * 0.026) * (p.z > 0 ? 1 : 0.45), 1);
+        if (!erst) erst = p;
+        vorher = p;
+      }
+      linie(vorher, erst, "#2FB6E8", (0.30 - i * 0.018) * 0.6, 1);
+    }
+
+    /* Hals */
+    for (var i = 0; i < hals.length; i++) {
+      var ring = hals[i], vorher = null, erst = null;
+      for (var j = 0; j < ring.length; j++) {
+        var p = proj(ring[j], cs, sn, cx, cy, sc);
+        if (vorher) linie(vorher, p, "#7FE9FF", 0.22 * (p.z > 0 ? 1 : 0.4), 1);
+        if (!erst) erst = p;
+        vorher = p;
+      }
+      linie(vorher, erst, "#7FE9FF", 0.10, 1);
+    }
+
+    /* Kopf: Ringe + senkrechte Streben, Mundbereich atmet mit */
+    var proj_cache = [];
+    for (var i = 0; i < netz.length; i++) {
+      var ring = netz[i], reihe = [];
+      for (var j = 0; j < ring.length; j++) {
+        var q = ring[j];
+        /* Mund: vorn unten, Punkte weichen bei Lautstärke aus */
+        var vorn = Math.max(0, Math.sin(q.a));                    // 1 = zur Kamera
+        var nahMund = Math.exp(-Math.pow((q.t + 0.50) / 0.15, 2)) * Math.pow(vorn, 3);
+        var oeff = nahMund * mund;
+        var f = 1 + oeff * 0.22;
+        reihe.push(proj({
+          x: q.x * f * puls,
+          y: (q.y + oeff * (q.t < -0.52 ? 0.10 : -0.06)) * puls,
+          z: q.z * f * puls
+        }, cs, sn, cx, cy, sc));
+      }
+      proj_cache.push(reihe);
+    }
+    for (var i = 0; i < proj_cache.length; i++) {
+      var reihe = proj_cache[i];
+      for (var j = 0; j < reihe.length; j++) {
+        var a = reihe[j], b = reihe[(j + 1) % reihe.length];
+        var vorn = a.z > 0;
+        linie(a, b, "#7FE9FF", (vorn ? 0.26 : 0.09) + amp * 0.05, vorn ? 1.1 : 0.8);
+        if (i < proj_cache.length - 1) {
+          linie(a, proj_cache[i + 1][j], "#4FCDF0", (vorn ? 0.15 : 0.055), 0.9);
+        }
+      }
+    }
+
+    /* Mund: leuchtender Schlitz auf der Vorderseite, wandert beim Drehen mit */
+    (function () {
+      var tM = -0.42, rM = radius(tM), yM = -tM * HEAD_H;
+      /* vorderster Punkt dieses Rings suchen (der mit dem grössten z nach der Drehung) */
+      var best = null, bestZ = -9;
+      for (var k = 0; k < 48; k++) {
+        var a = k / 48 * Math.PI * 2;
+        var px = Math.cos(a) * rM * HEAD_W * 0.94, pz = Math.sin(a) * rM * HEAD_D * 0.94 + tiefeVersatz(tM);
+        var zz = px * sn + pz * cs;
+        if (zz > bestZ) { bestZ = zz; best = { x: px, y: yM, z: pz }; }
+      }
+      var mitte = proj(best, cs, sn, cx, cy, sc);
+      var br = rM * HEAD_W * (0.34 + mund * 0.05) * sc * mitte.k;
+      var hy = (0.012 + mund * 0.070) * sc * mitte.k;
+      var g = ctx.createRadialGradient(mitte.X, mitte.Y, 0, mitte.X, mitte.Y, Math.max(br, hy));
+      g.addColorStop(0, "rgba(255,208,140," + (0.75 + mund * 0.25) + ")");
+      g.addColorStop(.55, "rgba(255,138,42," + (0.35 + mund * 0.4) + ")");
+      g.addColorStop(1, "rgba(255,110,0,0)");
+      ctx.globalAlpha = 1; ctx.fillStyle = g;
+      ctx.beginPath(); ctx.ellipse(mitte.X, mitte.Y, br, hy, 0, 0, Math.PI * 2); ctx.fill();
+      /* schmale Kernlinie */
+      ctx.strokeStyle = "rgba(255,225,180,.9)"; ctx.lineWidth = 1.2;
+      ctx.globalAlpha = 0.45 + mund * 0.5;
+      ctx.beginPath();
+      ctx.ellipse(mitte.X, mitte.Y, br * 0.72, Math.max(0.6, hy * 0.55), 0, 0, Math.PI * 2);
+      ctx.stroke();
+    })();
+
+    /* Gehirn im Schädel */
+    var hp = [];
+    for (var i = 0; i < hirn.length; i++) {
+      var q = hirn[i];
+      var w = 1 + Math.sin(now / 700 + q.p) * 0.05 + amp * 0.10;
+      hp.push(proj({ x:q.x*w, y:q.y*w, z:q.z*w }, cs, sn, cx, cy, sc));
+    }
+    for (var i = 0; i < hp.length; i++) {
+      for (var j = i + 1; j < i + 5 && j < hp.length; j++) {
+        var dx = hp[i].X - hp[j].X, dy = hp[i].Y - hp[j].Y;
+        var d2 = dx * dx + dy * dy;
+        if (d2 < (sc * 0.20) * (sc * 0.20)) {
+          linie(hp[i], hp[j], "#FF8A2A", 0.10 + amp * 0.14, 0.8);
+        }
+      }
+    }
+    for (var i = 0; i < hp.length; i++) {
+      var p = hp[i], r = hirn[i].s * (1.1 + amp * 0.9) * p.k;
+      ctx.globalAlpha = 0.55 + amp * 0.35;
+      ctx.fillStyle = i % 4 === 0 ? "#FFC46B" : "#FF8A2A";
+      ctx.beginPath(); ctx.arc(p.X, p.Y, r, 0, 6.3); ctx.fill();
+    }
+
+    /* Glut im Schädel */
+    var kern = proj({ x:0, y:-0.16, z:0 }, cs, sn, cx, cy, sc);
+    var rg = ctx.createRadialGradient(kern.X, kern.Y, 0, kern.X, kern.Y, sc * (0.60 + amp * 0.14));
+    rg.addColorStop(0, "rgba(255,180,90," + (0.34 + amp * 0.26) + ")");
+    rg.addColorStop(.45, "rgba(255,120,20,.12)");
+    rg.addColorStop(1, "rgba(255,120,20,0)");
+    ctx.globalAlpha = 1; ctx.fillStyle = rg;
+    ctx.beginPath(); ctx.arc(kern.X, kern.Y, sc * (0.60 + amp * 0.14), 0, 6.3); ctx.fill();
+
+    /* Bodenschein */
+    var bg = ctx.createRadialGradient(cx, cy + sc * 1.75, 0, cx, cy + sc * 1.75, sc * 1.6);
+    bg.addColorStop(0, "rgba(47,182,232,.10)");
+    bg.addColorStop(1, "rgba(47,182,232,0)");
+    ctx.fillStyle = bg; ctx.fillRect(0, cy + sc * 0.9, W, H);
+
+    ctx.globalAlpha = 1;
+    requestAnimationFrame(frame);
+  }
+
+  resize();
+  requestAnimationFrame(frame);
+  window.__vorschau = { setZ: setZ, amp: function () { return amp; } };
+})();
+</script>
+</body>
+</html>
