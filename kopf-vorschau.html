@@ -31,7 +31,7 @@
 <div id="wrap"><canvas id="c"></canvas></div>
 
 <div class="hud tl">JARVIS · KOPF-VORSCHAU<br><span id="hState" style="color:#7FE9FF">BEREIT</span></div>
-<div class="hud tr">ENTWURF 1<br>CYAN / ORANGE</div>
+<div class="hud tr">ENTWURF 1<br>GEHIRN · HERZ · LUNGE</div>
 
 <div class="bar">
   <button id="bIdle" class="on">Ruhe</button>
@@ -81,7 +81,7 @@
   function tiefeVersatz(t) { return -0.10 * Math.max(0, t + 0.2); }
 
   var RINGE = 22, PRO_RING = 44;
-  var HEAD_W = 0.76, HEAD_D = 0.88, HEAD_H = 1.00;    // Breite / Tiefe / Höhe
+  var HEAD_W = 0.70, HEAD_D = 0.82, HEAD_H = 0.94;    // Breite / Tiefe / Höhe
   var Y_KINN = -T_UNTEN * HEAD_H;                     // Bildschirm-y des Kinns
 
   var netz = [];                                      // Ringe des Kopfes
@@ -113,33 +113,69 @@
     hals.push(ring);
   }
 
-  /* Schultern: liegende Ringe, die nach aussen auslaufen (die "Wellen" im Bild) */
+  /* Wellen am Fuss, wo der Körper ausläuft (wie im Video) */
   var schultern = [];
-  for (var i = 0; i < 10; i++) {
-    var f = i / 9;
-    var rr = 0.34 + f * 0.80;
-    var y = Y_KINN + 0.17 + f * 0.42 + Math.pow(f, 2) * 0.22;
+  for (var i = 0; i < 5; i++) {
+    var f = i / 4;
+    var rr = 1.08 + f * 0.62;
+    var y = Y_KINN + 1.46 + f * 0.16;
     var ring = [];
     for (var j = 0; j < 68; j++) {
       var a = j / 68 * Math.PI * 2;
-      ring.push({ x: Math.cos(a) * rr, y: y, z: Math.sin(a) * rr * 0.52, f: f, a: a });
+      ring.push({ x: Math.cos(a) * rr, y: y, z: Math.sin(a) * rr * 0.56, f: f, a: a });
     }
     schultern.push(ring);
   }
 
-  /* Gehirn: Partikelwolke im Schädel + Verbindungen */
-  var hirn = [];
-  for (var i = 0; i < 150; i++) {
-    var u = Math.random() * Math.PI * 2, v = Math.acos(2 * Math.random() - 1);
-    var rad = 0.16 + Math.pow(Math.random(), .5) * 0.26;
-    hirn.push({
-      x: Math.sin(v) * Math.cos(u) * rad * 1.0,
-      y: -0.30 + Math.cos(v) * rad * 0.78,
-      z: Math.sin(v) * Math.sin(u) * rad * 0.95,
-      s: 0.4 + Math.random() * 0.9,
-      p: Math.random() * Math.PI * 2
-    });
+  /* Brustkorb: schliesst an den Hals an, Schulterlinie breit, Taille schmaler */
+  var TORSO = [[0,0.32],[0.10,0.78],[0.24,1.32],[0.42,1.42],[0.70,1.28],[1,1.06]];
+  function torsoBreite(f) {
+    for (var i = 0; i < TORSO.length - 1; i++) {
+      var a = TORSO[i], b = TORSO[i + 1];
+      if (f >= a[0] && f <= b[0]) {
+        var u = (f - a[0]) / (b[0] - a[0]);
+        u = u * u * (3 - 2 * u);
+        return a[1] + (b[1] - a[1]) * u;
+      }
+    }
+    return 1.06;
   }
+  var Y_BRUST = Y_KINN + 0.14;
+  var brustkorb = [];
+  for (var i = 0; i < 13; i++) {
+    var f = i / 12;
+    var y = Y_BRUST + f * 1.36;
+    var rx = torsoBreite(f), rz = rx * 0.56;
+    var ring = [];
+    for (var j = 0; j < 52; j++) {
+      var a = j / 52 * Math.PI * 2;
+      ring.push({ x: Math.cos(a) * rx, y: y, z: Math.sin(a) * rz - 0.05, f: f, a: a });
+    }
+    brustkorb.push(ring);
+  }
+
+  /* Organe als Partikelwolken — gleicher Effekt wie beim Gehirn */
+  function wolke(n, mx, my, mz, rx, ry, rz) {
+    var w = [];
+    for (var i = 0; i < n; i++) {
+      var u = Math.random() * Math.PI * 2, v = Math.acos(2 * Math.random() - 1);
+      var d = 0.35 + Math.pow(Math.random(), .5) * 0.65;
+      w.push({
+        x: mx + Math.sin(v) * Math.cos(u) * rx * d,
+        y: my + Math.cos(v) * ry * d,
+        z: mz + Math.sin(v) * Math.sin(u) * rz * d,
+        mx: mx, my: my, mz: mz,
+        s: 0.4 + Math.random() * 0.9,
+        p: Math.random() * Math.PI * 2
+      });
+    }
+    return w;
+  }
+
+  var hirn   = wolke(150,  0.00, -0.30,  0.00, 0.42, 0.34, 0.40);
+  var herz   = wolke( 95, -0.07, Y_BRUST + 0.66, 0.34, 0.16, 0.18, 0.13);
+  var lungeL = wolke(100, -0.54, Y_BRUST + 0.56, -0.10, 0.25, 0.36, 0.20);
+  var lungeR = wolke(100,  0.54, Y_BRUST + 0.56, -0.10, 0.25, 0.36, 0.20);
 
   /* Staub */
   var staub = [];
@@ -214,9 +250,17 @@
     amp += (zielAmp - amp) * (zielAmp > amp ? 0.35 : 0.10);
     mund += (amp - mund) * 0.45;
 
+    /* Herzschlag (lub-dub) und Atmung */
+    var hz = 1 / (1.05 - amp * 0.25);
+    var ph = (now / 1000 * hz) % 1;
+    var puls_h = Math.exp(-Math.pow((ph - 0.02) / 0.055, 2))
+               + 0.55 * Math.exp(-Math.pow((ph - 0.20) / 0.06, 2));
+    var schlag = 1 + puls_h * 0.17;
+    var atem = 1 + Math.sin(now / 4500 * Math.PI * 2) * 0.07;
+
     var cs = Math.cos(spin), sn = Math.sin(spin);
-    var cx = W / 2, cy = H * 0.36;
-    var sc = Math.min(W * 0.17, H * 0.21);
+    var cx = W / 2, cy = H * 0.28;
+    var sc = Math.min(W * 0.125, H * 0.145);
     var puls = 1 + Math.sin(now / 1300) * 0.012 + amp * 0.03;
 
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
@@ -244,6 +288,29 @@
         vorher = p;
       }
       linie(vorher, erst, "#2FB6E8", (0.30 - i * 0.018) * 0.6, 1);
+    }
+
+    /* Brustkorb */
+    var bk = [];
+    for (var i = 0; i < brustkorb.length; i++) {
+      var ring = brustkorb[i], reihe = [];
+      var w = 1 + (atem - 1) * (0.5 + 0.5 * Math.cos(ring[0].f * Math.PI));
+      for (var j = 0; j < ring.length; j++) {
+        var q = ring[j];
+        reihe.push(proj({ x:q.x*w, y:q.y, z:q.z*w }, cs, sn, cx, cy, sc));
+      }
+      bk.push(reihe);
+    }
+    for (var i = 0; i < bk.length; i++) {
+      var reihe = bk[i], f = brustkorb[i][0].f;
+      for (var j = 0; j < reihe.length; j++) {
+        var a = reihe[j], b = reihe[(j + 1) % reihe.length];
+        var vorn = a.z > 0;
+        linie(a, b, "#7FE9FF", (vorn ? 0.20 : 0.07) * (1 - f * 0.45), vorn ? 1 : 0.8);
+        if (i < bk.length - 1 && j % 2 === 0) {
+          linie(a, bk[i + 1][j], "#4FCDF0", (vorn ? 0.11 : 0.045), 0.9);
+        }
+      }
     }
 
     /* Hals */
@@ -317,37 +384,46 @@
       ctx.stroke();
     })();
 
-    /* Gehirn im Schädel */
-    var hp = [];
-    for (var i = 0; i < hirn.length; i++) {
-      var q = hirn[i];
-      var w = 1 + Math.sin(now / 700 + q.p) * 0.05 + amp * 0.10;
-      hp.push(proj({ x:q.x*w, y:q.y*w, z:q.z*w }, cs, sn, cx, cy, sc));
-    }
-    for (var i = 0; i < hp.length; i++) {
-      for (var j = i + 1; j < i + 5 && j < hp.length; j++) {
-        var dx = hp[i].X - hp[j].X, dy = hp[i].Y - hp[j].Y;
-        var d2 = dx * dx + dy * dy;
-        if (d2 < (sc * 0.20) * (sc * 0.20)) {
-          linie(hp[i], hp[j], "#FF8A2A", 0.10 + amp * 0.14, 0.8);
+    /* Organe: Gehirn, Herz, Lunge — alle im selben Partikel-Stil */
+    function organ(punkte, dehnung, helligkeit, glutR, glutY) {
+      var pp = [];
+      for (var i = 0; i < punkte.length; i++) {
+        var q = punkte[i];
+        var w = dehnung + Math.sin(now / 700 + q.p) * 0.05;
+        pp.push(proj({ x: q.mx + (q.x - q.mx) * w,
+                       y: q.my + (q.y - q.my) * w,
+                       z: q.mz + (q.z - q.mz) * w }, cs, sn, cx, cy, sc));
+      }
+      for (var i = 0; i < pp.length; i++) {
+        for (var j = i + 1; j < i + 5 && j < pp.length; j++) {
+          var dx = pp[i].X - pp[j].X, dy = pp[i].Y - pp[j].Y;
+          if (dx * dx + dy * dy < (sc * 0.16) * (sc * 0.16)) {
+            linie(pp[i], pp[j], "#FF8A2A", (0.09 + amp * 0.12) * helligkeit, 0.8);
+          }
         }
       }
-    }
-    for (var i = 0; i < hp.length; i++) {
-      var p = hp[i], r = hirn[i].s * (1.1 + amp * 0.9) * p.k;
-      ctx.globalAlpha = 0.55 + amp * 0.35;
-      ctx.fillStyle = i % 4 === 0 ? "#FFC46B" : "#FF8A2A";
-      ctx.beginPath(); ctx.arc(p.X, p.Y, r, 0, 6.3); ctx.fill();
+      for (var i = 0; i < pp.length; i++) {
+        var p = pp[i], r = punkte[i].s * (1.0 + amp * 0.8) * p.k;
+        ctx.globalAlpha = Math.min(1, (0.5 + amp * 0.3) * helligkeit);
+        ctx.fillStyle = i % 4 === 0 ? "#FFC46B" : "#FF8A2A";
+        ctx.beginPath(); ctx.arc(p.X, p.Y, r, 0, 6.3); ctx.fill();
+      }
+      /* Glut */
+      var q0 = punkte[0];
+      var kern = proj({ x: q0.mx, y: (glutY === undefined ? q0.my : glutY), z: q0.mz }, cs, sn, cx, cy, sc);
+      var R = sc * glutR;
+      var rg = ctx.createRadialGradient(kern.X, kern.Y, 0, kern.X, kern.Y, R);
+      rg.addColorStop(0, "rgba(255,180,90," + (0.30 * helligkeit + amp * 0.22) + ")");
+      rg.addColorStop(.45, "rgba(255,120,20,.10)");
+      rg.addColorStop(1, "rgba(255,120,20,0)");
+      ctx.globalAlpha = 1; ctx.fillStyle = rg;
+      ctx.beginPath(); ctx.arc(kern.X, kern.Y, R, 0, 6.3); ctx.fill();
     }
 
-    /* Glut im Schädel */
-    var kern = proj({ x:0, y:-0.16, z:0 }, cs, sn, cx, cy, sc);
-    var rg = ctx.createRadialGradient(kern.X, kern.Y, 0, kern.X, kern.Y, sc * (0.60 + amp * 0.14));
-    rg.addColorStop(0, "rgba(255,180,90," + (0.34 + amp * 0.26) + ")");
-    rg.addColorStop(.45, "rgba(255,120,20,.12)");
-    rg.addColorStop(1, "rgba(255,120,20,0)");
-    ctx.globalAlpha = 1; ctx.fillStyle = rg;
-    ctx.beginPath(); ctx.arc(kern.X, kern.Y, sc * (0.60 + amp * 0.14), 0, 6.3); ctx.fill();
+    organ(hirn, 1 + amp * 0.10, 1.0, 0.60 + amp * 0.14, -0.16);
+    organ(lungeL, atem, 0.72, 0.34);
+    organ(lungeR, atem, 0.72, 0.34);
+    organ(herz, schlag, 1.25, 0.24 + puls_h * 0.12);
 
     /* Bodenschein */
     var bg = ctx.createRadialGradient(cx, cy + sc * 1.75, 0, cx, cy + sc * 1.75, sc * 1.6);
