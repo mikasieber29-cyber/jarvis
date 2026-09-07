@@ -980,7 +980,7 @@
   var micBtn = $("micBtn"), latEl = $("lat"), sbCount = $("sbCount"), sbLast = $("sbLast"), audioSrcEl = $("audioSrc");
   var SUB_CONT = "";
   var session = false, busy = false, rounds = 0;
-  var recorder = null, chunks = [], micStream = null;
+  var take = null, micStream = null, vorlaufTimer = null;
   var vad = { speech:false, onset:0, silence:0, cool:0, started:0, peak:0, loud:0, bg:.02, maxSeen:0, hist:[], tick:0 };
   /* Regler für die Spracherkennung — hier lässt sich nachjustieren */
   var VAD = {
@@ -1005,12 +1005,12 @@
       session = true; vad.speech = false; vad.onset = 0; vad.silence = 0; vad.cool = 6;
       micBtn.classList.add("live"); micBtn.setAttribute("aria-pressed","true");
       setState("listening", SUB_CONT);
+      vorlaufAn();
     }).catch(function () { setState("error", "Mikrofon-Zugriff verweigert — im Browser erlauben und neu laden"); });
   }
   function sessionOff() {
     session = false;
-    if (recorder && recorder.state === "recording") { recorder.onstop = null; recorder.stop(); }
-    recorder = null;
+    takeWeg();
     if (micStream) { micStream.getTracks().forEach(function (t) { t.stop(); }); micStream = null; }
     audio.detach(); audioSrcEl.textContent = "BEREIT";
     micBtn.classList.remove("live"); micBtn.setAttribute("aria-pressed","false");
@@ -1022,13 +1022,50 @@
     audioSrcEl.textContent = "MIKROFON";
     vad.speech = false; vad.onset = 0; vad.silence = 0; vad.cool = 8;
     setState("listening", SUB_CONT);
+    vorlaufAn();
   }
+  /* ---- Aufnahme mit Vorlauf ----
+     Früher startete die Aufnahme erst, wenn der Pegel 0,4 s über der Schwelle lag —
+     das erste Wort («Hey Jarvis») war da schon vorbei und fehlte im Ton.
+     Jetzt läuft durchgehend eine kurze Aufnahme mit, die alle 1,2 s verworfen und
+     neu begonnen wird. Fängst du an zu sprechen, behalten wir die laufende: ihr
+     Anfang liegt vor deinem ersten Wort. Das Verwerfen ist nötig, weil ein
+     abgeschnittener webm-Strom ohne seinen Kopf nicht mehr lesbar wäre. */
+  var VORLAUF_MS = 1200;
+
+  function neuerTake() {
+    if (!micStream || !session) return;
+    if (take && take.rec && take.rec.state === "recording") { take.weg = true; take.rec.stop(); }
+    var t = { chunks: [], weg: false, start: Date.now() };
+    try { t.rec = new MediaRecorder(micStream); } catch (e) { return; }
+    t.rec.ondataavailable = function (e) { if (e.data.size) t.chunks.push(e.data); };
+    t.rec.onstop = function () { if (!t.weg) sendTalk(t.chunks); };
+    t.rec.start();
+    take = t;
+  }
+  function vorlaufAn() {
+    vorlaufAus();
+    neuerTake();
+    vorlaufTimer = setInterval(neuerTake, VORLAUF_MS);
+  }
+  function vorlaufAus() {
+    if (vorlaufTimer) { clearInterval(vorlaufTimer); vorlaufTimer = null; }
+  }
+  function takeWeg() {
+    vorlaufAus();
+    if (take && take.rec && take.rec.state === "recording") { take.weg = true; take.rec.stop(); }
+    take = null;
+  }
+  /* Du sprichst: die laufende Aufnahme behalten statt eine neue zu beginnen */
   function beginCapture() {
-    chunks = []; recorder = new MediaRecorder(micStream);
-    recorder.ondataavailable = function (e) { if (e.data.size) chunks.push(e.data); };
-    recorder.onstop = sendTalk; recorder.start(); vad.started = Date.now();
+    vorlaufAus();
+    if (!take || !take.rec || take.rec.state !== "recording") neuerTake();
+    vad.started = Date.now();
   }
-  function endCapture() { if (recorder && recorder.state === "recording") recorder.stop(); }
+  function endCapture() {
+    if (take && take.rec && take.rec.state === "recording") take.rec.stop();
+    else vorlaufAn();
+  }
   setInterval(function () {
     if (!session || busy || current !== "listening") return;
     if (vad.cool > 0) { vad.cool--; return; }
@@ -1065,8 +1102,8 @@
     }
   }, 100);
 
-  function sendTalk() {
-    var blob = new Blob(chunks, { type:"audio/webm" });
+  function sendTalk(schnipsel) {
+    var blob = new Blob(schnipsel || [], { type:"audio/webm" });
     var durMs = Date.now()-vad.started;
     if (blob.size < 3000 || durMs < 500) { resumeListen(); return; }
     /* Nahfeld-Prüfung: war zu leise / zu weit weg → war nicht Mika, still verwerfen */

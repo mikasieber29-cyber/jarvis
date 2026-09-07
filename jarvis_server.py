@@ -39,7 +39,7 @@ PORT = 8765
 HERMES_URL = "http://127.0.0.1:8642/v1/chat/completions"
 ELEVEN_VOICE_ID = "g1jpii0iyvtRs8fqXsd1"          # Helmut
 ELEVEN_MODEL = "eleven_flash_v2_5"   # schnelles Gesprächs-Modell; für Studio-Qualität: eleven_multilingual_v2
-WHISPER_MODEL = "base"                              # später: "small" für bessere Erkennung
+WHISPER_MODEL = "small"     # "base" ist schneller, versteht aber deutlich schlechter
 WHISPER_LANG = "de"
 
 SYSTEM_HINT = (
@@ -96,10 +96,28 @@ def get_whisper():
         return _whisper
 
 
+# Namen und Fachwörter, die Whisper sonst verballhornt ("Hey Jarvis" wurde zu
+# "Herr Grabis", "Rachel" zu "Rache"). Der Text wird dem Modell als Kontext
+# vorangestellt — es erkennt die Wörter danach deutlich zuverlässiger.
+def whisper_wortliste():
+    try:
+        namen = ", ".join(m["name"] for m in load_team())
+    except Exception:
+        namen = "Jarvis, Rachel, Ben, Lina"
+    return ("Gespräch mit Jarvis, dem Assistenten von Mika Sieber. Im Team: " + namen + ". "
+            "Firma: Trending Media. Weitere Wörter: Hermes, Helmut, Briefing, Posteingang, "
+            "Termin, Beitrag, Entwurf, LinkedIn, Kalender, Erinnerung, Schweiz, Zürich.")
+
+
 def transcribe(audio_path):
     model = get_whisper()
     segments, _info = model.transcribe(
-        audio_path, language=WHISPER_LANG, beam_size=5, vad_filter=True
+        audio_path,
+        language=WHISPER_LANG,
+        beam_size=3,
+        vad_filter=True,
+        initial_prompt=whisper_wortliste(),
+        condition_on_previous_text=False,   # sonst zieht eine alte Antwort die nächste mit
     )
     return " ".join(s.text.strip() for s in segments).strip()
 
@@ -1040,7 +1058,10 @@ def member(who):
 ANRUFE = ("hey", "hallo", "he", "ey", "ok", "okay", "jo", "sag mal", "du")
 
 NAMENS_VARIANTEN = {
-    "jarvis":  ["jarvis", "travis", "jervis", "jarwis", "charvis", "dscharvis", "sarvis"],
+    # Verhörer, die in Tests wirklich vorkamen. Nur Fantasiewoerter aufnehmen —
+    # echte deutsche Woerter wie "wenn" (statt "Ben") wuerden staendig falsch greifen.
+    "jarvis":  ["jarvis", "travis", "jervis", "jarwis", "charvis", "dscharvis", "sarvis",
+                "bravis", "grabis", "dravis", "jarfis", "harvis"],
     "rachel":  ["rachel", "rachael", "rachelle", "raechel", "räschel", "reichel", "rejchel", "raschel"],
     "ben":     ["ben", "benn", "bän", "beno"],
     "lina":    ["lina", "lena", "leena", "liena", "linna"],
