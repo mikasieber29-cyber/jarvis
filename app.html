@@ -135,6 +135,48 @@
   .pill.hi { background:var(--acc); color:var(--onacc); }
   .pill.bad { background:var(--warnsoft); color:var(--warn); }
 
+  /* ---------- Globus ---------- */
+  .weltwrap { display:grid; grid-template-columns:minmax(0,440px) minmax(0,1fr); gap:16px; align-items:start; }
+  .globe {
+    position:relative; display:flex; flex-direction:column; align-items:center; gap:10px;
+    border-radius:18px; padding:18px 16px 16px;
+    background:
+      radial-gradient(circle at 50% 44%, rgba(255,152,52,.10) 0, rgba(0,0,0,0) 66%),
+      radial-gradient(130% 95% at 50% 0%, #151820 0, #0A0B10 58%, #06070A 100%);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.055), 0 22px 54px -32px rgba(0,0,0,.55);
+  }
+  #globe { width:100%; max-width:400px; height:400px; display:block; }
+  .globe .wo { font-family:"Inter Tight",sans-serif; font-weight:700; font-size:17px; color:#FFD9A0; letter-spacing:.02em; }
+  .globe .wosub { font-family:"IBM Plex Mono","Share Tech Mono",monospace; font-size:10.5px;
+                  letter-spacing:.14em; text-transform:uppercase; color:#7E8A96; }
+  .laenderbar { display:flex; gap:6px; flex-wrap:wrap; justify-content:center; padding:2px 4px 0; }
+  .laenderbar button { border:1px solid var(--line); background:var(--card); color:var(--ink2);
+                       border-radius:999px; padding:5px 12px; font:500 12.5px Barlow,sans-serif; cursor:pointer; }
+  .laenderbar button:hover { border-color:var(--accline); color:var(--acc); }
+  .laenderbar button.on { background:var(--acc); border-color:var(--acc); color:var(--onacc); font-weight:600; }
+  @media (max-width:1000px) { .weltwrap { grid-template-columns:1fr; } #globe { max-width:340px; height:340px; margin:0 auto; } }
+
+  /* ---------- Schlagzeilen ---------- */
+  .newsgrid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:0 22px; }
+  .nrow { display:block; padding:9px 0; border-top:1px solid var(--line); cursor:pointer; }
+  .newsgrid .nrow:nth-child(-n+3) { border-top:none; }
+  .nrow .src { display:block; font-family:"IBM Plex Mono","Share Tech Mono",monospace; font-size:10.5px;
+               letter-spacing:.1em; text-transform:uppercase; color:var(--ink3); margin-bottom:3px; }
+  .nrow .hl { font-size:13.5px; line-height:1.42; color:var(--ink);
+              display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+  .nrow:hover .hl { color:var(--acc); }
+  .nrow:focus-visible { outline:2px solid var(--accline); outline-offset:2px; border-radius:6px; }
+  .newslist { columns:2; column-gap:22px; padding:4px 16px 12px; }
+  .newslist .nrow { break-inside:avoid; }
+  .newslist .nrow:first-child { border-top:none; }
+  @media (max-width:1100px) { .newsgrid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+                              .newsgrid .nrow:nth-child(-n+3) { border-top:1px solid var(--line); }
+                              .newsgrid .nrow:nth-child(-n+2) { border-top:none; } }
+  @media (max-width:860px)  { .newsgrid { grid-template-columns:1fr; }
+                              .newsgrid .nrow:nth-child(-n+3) { border-top:1px solid var(--line); }
+                              .newsgrid .nrow:first-child { border-top:none; }
+                              .newslist { columns:1; } }
+
   .statusbar { display:flex; gap:22px; flex-wrap:wrap; font-size:12px; color:var(--ink2); padding:2px 4px; }
   .statusbar b { color:var(--ink); font-weight:600; }
   .statusbar b.warn { color:var(--warn); }
@@ -355,6 +397,7 @@
       <a data-page="task"><span class="ic">☐</span> Aufgaben <span class="cnt" id="navTaskN"></span></a>
       <a data-page="post"><span class="ic">✎</span> Beiträge</a>
       <a data-page="team"><span class="ic">⚇</span> Team</a>
+      <a data-page="news"><span class="ic">◈</span> Welt</a>
       <a data-page="hist"><span class="ic">⟲</span> Verlauf</a>
     </nav>
     <div class="sb-foot">
@@ -373,7 +416,7 @@
     </div>
 
     <nav class="mtabs" id="mtabs">
-      <a class="on" data-page="home">Übersicht</a><a data-page="mail">Mails</a><a data-page="cal">Termine</a><a data-page="task">Aufgaben</a><a data-page="post">Beiträge</a><a data-page="team">Team</a><a data-page="hist">Verlauf</a>
+      <a class="on" data-page="home">Übersicht</a><a data-page="mail">Mails</a><a data-page="cal">Termine</a><a data-page="task">Aufgaben</a><a data-page="post">Beiträge</a><a data-page="team">Team</a><a data-page="news">Welt</a><a data-page="hist">Verlauf</a>
     </nav>
 
     <div class="view" id="viewHome">
@@ -439,6 +482,11 @@
       </section>
     </div>
 
+    <section id="secNews">
+      <header><h3>Welt</h3><span class="pill" id="newsN">lädt …</span><span class="more">Schlagzeilen</span></header>
+      <div class="newsgrid" id="newsRows"><div class="row"><span class="t">…</span><span class="m"><b>Hole Schlagzeilen</b></span></div></div>
+    </section>
+
     <div class="statusbar">
       <div>Zustand <b id="sb1">Bereit</b></div>
       <div>Gespräche <b id="sbCount">0</b></div>
@@ -489,6 +537,23 @@
     <div class="view" id="viewTeam" hidden>
       <div class="ph"><h2>Team</h2><span class="pill" id="teamHint">gemeinsames Gedächtnis</span><span class="more" style="margin-left:0">sag «Hey Rachel», «Hey Ben» oder «Hey Lina» — dann übernimmt sie oder er</span><span class="sp"></span><button class="btn" id="teamReload">Aktualisieren</button></div>
       <div class="tree" id="tree"><div class="card empty">Lade Team …</div></div>
+    </div>
+
+    <div class="view" id="viewNews" hidden>
+      <div class="ph"><h2>Welt</h2><span class="pill" id="newsCount">lädt …</span>
+        <span class="more" style="margin-left:0">frag Jarvis «was geht in Italien ab» — die Erde dreht sich hin</span>
+        <span class="sp"></span><button class="btn" id="newsReload">Aktualisieren</button></div>
+      <div class="weltwrap">
+        <div class="globe">
+          <canvas id="globe" aria-label="Erdkugel — dreht sich zum gefragten Land"></canvas>
+          <div class="wo" id="globeWo">Welt</div>
+          <div class="wosub" id="globeSub">alle Quellen</div>
+        </div>
+        <div>
+          <div class="laenderbar" id="laenderbar"></div>
+          <div class="card" style="margin-top:12px"><div class="newslist" id="newsList"><div class="empty">Hole Schlagzeilen …</div></div></div>
+        </div>
+      </div>
     </div>
 
     <div class="view" id="viewHist" hidden>
@@ -993,6 +1058,7 @@
         addLine("Chef", res.j.transcript, false);
         addLine(res.j.name || whoName(), res.j.reply, true);
         setTimeout(loadDashboard, 5000);
+        if (res.j.focus) fokusZeigen(res.j.focus);
         if (res.j.post) { toast("Entwurf liegt unter Beiträge bereit"); if (page === "post") loadPosts(); }
         if (res.j.audio_b64) sprich(res.j.audio_b64, !!res.j.briefing, resumeListen);
         else resumeListen();
@@ -1080,6 +1146,7 @@
         if (res.who && res.who !== who) { setWho(res.who); if (res.switched) toast(res.name + " übernimmt"); }
         addLine(res.name || whoName(), res.reply, false);
         rounds++; sbCount.textContent = rounds;
+        if (res.focus) fokusZeigen(res.focus);
         setTimeout(loadDashboard, 5000);
       })
       .catch(function (err) {
@@ -1386,7 +1453,7 @@
   });
 
   /* ============ Seiten ============ */
-  var PAGES = { home:"viewHome", mail:"viewMail", cal:"viewCal", task:"viewTask", post:"viewPost", team:"viewTeam", hist:"viewHist" };
+  var PAGES = { home:"viewHome", mail:"viewMail", cal:"viewCal", task:"viewTask", post:"viewPost", team:"viewTeam", news:"viewNews", hist:"viewHist" };
   var page = "home", loaded = {};
   function showPage(p) {
     if (!PAGES[p]) p = "home";
@@ -1401,6 +1468,12 @@
     if (p === "task" && !loaded.task) loadTasks();
     if (p === "post") loadPosts();
     if (p === "team" && !loaded.team) { loadTeam(); loaded.team = true; }
+    if (p === "news") {
+      if (!landPunkte.length) ladeWelt(); else gresize();
+      if (!$("laenderbar").children.length) baueLaenderbar();
+      renderNewsPage();
+      if (!loaded.news) loadNews();
+    }
     if (p === "hist") renderHist();
   }
   document.addEventListener("click", function (e) {
@@ -1497,6 +1570,205 @@
   document.addEventListener("click", function (e) { var cb = e.target.closest(".cb[data-name]"); if (cb) completeTask(cb); });
   document.addEventListener("keydown", function (e) { if ((e.code === "Space" || e.code === "Enter") && e.target.classList && e.target.classList.contains("cb") && e.target.dataset.name) { e.preventDefault(); completeTask(e.target); } });
 
+  /* Nennt Jarvis in seiner Antwort ein Land, wandert die Erde dorthin und
+     die Welt-Seite zeigt die Schlagzeilen von dort. */
+  function fokusZeigen(f) {
+    if (!f || typeof f.lat !== "number") return;
+    showPage("news");
+    if (!landPunkte.length) ladeWelt(); else gresize();
+    if (!$("laenderbar").children.length) baueLaenderbar();
+    if (f.land) { drehZu(f.lat, f.lon); loadNews(f.land); }
+    else { drehZurWelt(); loadNews(null); }
+  }
+
+  /* ---- Globus: Punktraster der Landflächen, dreht sich zum gefragten Land ---- */
+  var gcv = $("globe"), gctx = gcv.getContext("2d");
+  var GW = 0, GH = 0, GR = 0;
+  var landPunkte = [];              /* {x,y,z} auf der Einheitskugel */
+  var zielLat = 20, zielLon = 10;   /* wohin gedreht werden soll */
+  var istLat = 20, istLon = 10;     /* wo wir gerade sind */
+  var marke = null;                 /* {lat,lon} des gefragten Landes */
+  var globusLaeuft = false;
+
+  function gresize() {
+    var r = gcv.getBoundingClientRect(), dpr = Math.min(window.devicePixelRatio || 1, 2);
+    GW = Math.max(1, Math.round(r.width)); GH = Math.max(1, Math.round(r.height));
+    gcv.width = GW * dpr; gcv.height = GH * dpr;
+    gctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    GR = Math.min(GW, GH) * .40;
+  }
+
+  function aufKugel(lat, lon) {
+    var a = lat * Math.PI / 180, b = lon * Math.PI / 180;
+    return { x: Math.cos(a) * Math.sin(b), y: -Math.sin(a), z: Math.cos(a) * Math.cos(b) };
+  }
+
+  function ladeWelt() {
+    fetch("/api/welt").then(function (r) { return r.json(); }).then(function (d) {
+      var m = d.mask, st = d.step;
+      for (var iy = 0; iy < d.nlat; iy++) {
+        for (var ix = 0; ix < d.nlon; ix++) {
+          if (m.charAt(iy * d.nlon + ix) !== "1") continue;
+          landPunkte.push(aufKugel(90 - (iy + .5) * st, -180 + (ix + .5) * st));
+        }
+      }
+      if (!globusLaeuft) { globusLaeuft = true; gresize(); requestAnimationFrame(globus); }
+    }).catch(function () {});
+  }
+
+  /* kürzester Weg über den Meridian — sonst dreht die Erde einmal falsch herum */
+  function kurz(von, nach) {
+    var d = ((nach - von + 540) % 360) - 180;
+    return von + d;
+  }
+
+  function globus(t) {
+    var zeit = t / 1000;
+    /* ohne Ziel dreht sie langsam weiter */
+    if (!marke && !reduce) zielLon -= 6 * (1 / 60);
+    istLat += (zielLat - istLat) * .05;
+    istLon += (kurz(istLon, zielLon) - istLon) * .05;
+
+    var ca = Math.cos(-istLat * Math.PI / 180), sa = Math.sin(-istLat * Math.PI / 180);
+    var cb = Math.cos(-istLon * Math.PI / 180), sb = Math.sin(-istLon * Math.PI / 180);
+    function dreh(p) {
+      var x1 = p.x * cb - p.z * sb, z1 = p.x * sb + p.z * cb;   /* Länge */
+      var y2 = p.y * ca - z1 * sa, z2 = p.y * sa + z1 * ca;     /* Breite */
+      return { X: GW / 2 + x1 * GR, Y: GH / 2 + y2 * GR, Z: z2 };
+    }
+
+    gctx.clearRect(0, 0, GW, GH);
+    var CX = GW / 2, CY = GH / 2;
+
+    /* Atmosphäre */
+    var at = gctx.createRadialGradient(CX, CY, GR * .82, CX, CY, GR * 1.22);
+    at.addColorStop(0, "rgba(255,150,50,.12)");
+    at.addColorStop(.45, "rgba(255,140,40,.05)");
+    at.addColorStop(1, "rgba(255,140,40,0)");
+    gctx.fillStyle = at; gctx.beginPath(); gctx.arc(CX, CY, GR * 1.22, 0, Math.PI * 2); gctx.fill();
+
+    /* Meridiane und Breitenkreise, ganz zurückhaltend */
+    gctx.globalCompositeOperation = "lighter";
+    gctx.strokeStyle = "rgba(255,150,50,.10)"; gctx.lineWidth = 1;
+    var g, k, p, q;
+    for (g = -150; g < 180; g += 30) {
+      gctx.beginPath();
+      for (k = -90; k <= 90; k += 6) {
+        q = dreh(aufKugel(k, g)); if (q.Z < 0) continue;
+        gctx.lineTo(q.X, q.Y);
+      }
+      gctx.stroke();
+    }
+    for (g = -60; g <= 60; g += 30) {
+      gctx.beginPath();
+      for (k = -180; k <= 180; k += 6) {
+        q = dreh(aufKugel(g, k)); if (q.Z < 0) continue;
+        gctx.lineTo(q.X, q.Y);
+      }
+      gctx.stroke();
+    }
+
+    /* Landflächen */
+    for (var i = 0; i < landPunkte.length; i++) {
+      q = dreh(landPunkte[i]);
+      if (q.Z < 0) continue;                      /* Rückseite weglassen */
+      var rand = Math.min(1, q.Z * 2.2);          /* am Rand schwächer */
+      gctx.globalAlpha = .18 + rand * .55;
+      gctx.fillStyle = "#FF9A2E";
+      gctx.fillRect(q.X - 1.1, q.Y - 1.1, 2.2, 2.2);
+    }
+    gctx.globalAlpha = 1;
+
+    /* Markierung auf dem gefragten Land */
+    if (marke) {
+      var mp = dreh(aufKugel(marke.lat, marke.lon));
+      if (mp.Z >= -.05) {
+        var puls = reduce ? 1 : 1 + Math.sin(zeit * 2.4) * .35;
+        gctx.fillStyle = "rgba(255,246,225,.95)";
+        gctx.beginPath(); gctx.arc(mp.X, mp.Y, 2.6, 0, Math.PI * 2); gctx.fill();
+        gctx.strokeStyle = "rgba(255,214,160,.7)"; gctx.lineWidth = 1.4;
+        gctx.beginPath(); gctx.arc(mp.X, mp.Y, 6 + puls * 5, 0, Math.PI * 2); gctx.stroke();
+      }
+    }
+    gctx.globalCompositeOperation = "source-over";
+    requestAnimationFrame(globus);
+  }
+
+  function drehZu(lat, lon) { zielLat = lat; zielLon = lon; marke = { lat: lat, lon: lon }; }
+  function drehZurWelt() { marke = null; zielLat = 20; }
+
+  /* ---- Welt: Schlagzeilen aus mehreren Feeds ---- */
+  var newsCache = [];
+  /* Adressen kommen aus fremden Feeds — nur http(s) durchlassen. */
+  function safeUrl(u) { return /^https?:\/\//i.test(u || "") ? u : ""; }
+  function newsRow(m) {
+    var u = safeUrl(m.url);
+    var kopf = '<span class="src">' + esc(m.source) + (m.when ? ' · ' + esc(m.when) : '') + '</span>' +
+               '<span class="hl">' + esc(m.title) + '</span>';
+    return u ? '<a class="nrow" href="' + esc(u) + '" target="_blank" rel="noopener noreferrer">' + kopf + '</a>'
+             : '<div class="nrow">' + kopf + '</div>';
+  }
+  function renderNewsPage() {
+    $("newsCount").textContent = newsCache.length
+      ? newsCache.length + " Meldungen" + (newsLand ? " · " + newsLand : "")
+      : "nichts gefunden";
+    $("newsList").innerHTML = newsCache.length
+      ? newsCache.map(newsRow).join("")
+      : '<div class="empty">Keine Meldungen gefunden.</div>';
+  }
+  var newsLand = null;                 /* null = die ganze Welt */
+
+  function loadNews(land) {
+    var ziel = land || null;
+    var u = ziel ? "/api/news?land=" + encodeURIComponent(ziel) : "/api/news";
+    fetch(u).then(function (r) { return r.json(); }).then(function (d) {
+      var liste = d && d.meldungen;
+      if (!Array.isArray(liste)) {
+        $("newsN").textContent = "Fehler"; $("newsN").className = "pill bad";
+        var msg = '<div class="empty">Feeds nicht erreichbar: ' +
+                  esc((d && (d.error || (d.meldungen && d.meldungen.error))) || "?") + '</div>';
+        if (!ziel) $("newsRows").innerHTML = msg;
+        $("newsList").innerHTML = msg;
+        return;
+      }
+      newsLand = d.land || null;
+      newsCache = liste;
+      $("globeWo").textContent = newsLand || "Welt";
+      $("globeSub").textContent = newsLand ? "Schlagzeilen aus dem Land" : "alle Quellen";
+      if (typeof d.lat === "number") drehZu(d.lat, d.lon); else drehZurWelt();
+      markiereLand(newsLand);
+      renderNewsPage();
+      /* Die Kachel auf der Übersicht zeigt immer die Welt, nicht das Land */
+      if (!ziel) {
+        loaded.news = true;
+        $("newsN").textContent = liste.length ? "aktuell" : "nichts da"; $("newsN").className = "pill";
+        $("newsRows").innerHTML = liste.slice(0, 6).map(newsRow).join("") || '<div class="empty">Keine Meldungen.</div>';
+      }
+    }).catch(function () {
+      $("newsRows").innerHTML = '<div class="empty">Brücke nicht erreichbar.</div>';
+    });
+  }
+  $("newsReload").addEventListener("click", function () { loadNews(newsLand); });
+
+  /* ---- Länderleiste: Schnellzugriff neben dem Globus ---- */
+  var SCHNELL = ["Welt", "Schweiz", "Deutschland", "Italien", "Frankreich", "Österreich",
+                 "USA", "Ukraine", "Israel", "China"];
+  function baueLaenderbar() {
+    $("laenderbar").innerHTML = SCHNELL.map(function (l) {
+      return '<button data-land="' + esc(l) + '">' + esc(l) + '</button>';
+    }).join("");
+    markiereLand(newsLand);
+  }
+  function markiereLand(land) {
+    document.querySelectorAll("#laenderbar button").forEach(function (b) {
+      b.classList.toggle("on", b.dataset.land === (land || "Welt"));
+    });
+  }
+  $("laenderbar").addEventListener("click", function (e) {
+    var b = e.target.closest("button[data-land]"); if (!b) return;
+    loadNews(b.dataset.land === "Welt" ? null : b.dataset.land);
+  });
+
   /* ---- Verlauf (im Browser gespeichert) ---- */
   var HIST_KEY = "jarvisHistory";
   function histLoad() { try { return JSON.parse(localStorage.getItem(HIST_KEY) || "[]"); } catch (e) { return []; } }
@@ -1587,6 +1859,7 @@
   }
   function loadDashboard() { fetch("/api/dashboard").then(function (r) { return r.json(); }).then(renderDashboard).catch(function () {}); }
   loadDashboard(); setInterval(loadDashboard, 60000);
+  loadNews(); setInterval(loadNews, 900000);
   loadFollowups(); setInterval(loadFollowups, 600000);
   loadTeam(); loaded.team = true;
 
@@ -1597,7 +1870,7 @@
   }).catch(function () { bridgeEl.textContent = "fehlt"; bridgeDot.className = "live bad"; setState("error", "Brücke nicht erreichbar — jarvis_server.py starten"); });
 
   window.JARVIS = { setJarvisState:setState, updateTranscript:function (t) { addLine("Jarvis", t, true); }, setTheme:function (m) { themeMode = m; refreshTheme(); }, sprich:sprich };
-  window.addEventListener("resize", resize);
+  window.addEventListener("resize", function () { resize(); if (globusLaeuft) gresize(); });
   resize(); setState("idle"); requestAnimationFrame(frame);
   showPage((location.hash || "#home").slice(1));
   window.addEventListener("hashchange", function () { showPage((location.hash || "#home").slice(1)); });

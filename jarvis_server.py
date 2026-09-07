@@ -335,6 +335,254 @@ def build_dashboard():
     return data
 
 
+
+
+# ---------------------------------------------------------------- Länder auf dem Globus
+
+# Name -> (Breite, Länge, Schreibweisen die Mika benutzen könnte)
+# Die Koordinaten sind grobe Mittelpunkte — sie bestimmen, wohin sich die Erde dreht.
+LAENDER = {
+    "Schweiz":         (46.8,   8.2, ["schweiz", "helvetia", "eidgenossenschaft"]),
+    "Deutschland":     (51.2,  10.4, ["deutschland", "brd"]),
+    "Österreich":      (47.6,  14.1, ["österreich", "oesterreich"]),
+    "Italien":         (42.8,  12.6, ["italien", "italy"]),
+    "Frankreich":      (46.6,   2.4, ["frankreich", "france"]),
+    "Spanien":         (40.2,  -3.7, ["spanien"]),
+    "Portugal":        (39.5,  -8.0, ["portugal"]),
+    "Grossbritannien": (54.0,  -2.5, ["grossbritannien", "großbritannien", "england", "uk", "britannien", "london"]),
+    "Irland":          (53.2,  -8.0, ["irland"]),
+    "Niederlande":     (52.2,   5.5, ["niederlande", "holland"]),
+    "Belgien":         (50.6,   4.6, ["belgien"]),
+    "Liechtenstein":   (47.2,   9.6, ["liechtenstein"]),
+    "Polen":           (52.1,  19.4, ["polen"]),
+    "Tschechien":      (49.8,  15.5, ["tschechien", "tschechei"]),
+    "Ungarn":          (47.2,  19.4, ["ungarn"]),
+    "Kroatien":        (45.1,  15.2, ["kroatien"]),
+    "Serbien":         (44.0,  21.0, ["serbien"]),
+    "Rumänien":        (45.9,  25.0, ["rumänien", "rumaenien"]),
+    "Griechenland":    (39.0,  22.0, ["griechenland"]),
+    "Schweden":        (62.0,  15.0, ["schweden"]),
+    "Norwegen":        (64.5,  12.0, ["norwegen"]),
+    "Dänemark":        (56.0,  10.0, ["dänemark", "daenemark"]),
+    "Finnland":        (64.0,  26.0, ["finnland"]),
+    "Türkei":          (39.0,  35.2, ["türkei", "tuerkei"]),
+    "Ukraine":         (48.4,  31.2, ["ukraine"]),
+    "Russland":        (61.5,  90.0, ["russland", "russia", "moskau"]),
+    "USA":             (39.5, -98.5, ["usa", "amerika", "vereinigte staaten", "washington"]),
+    "Kanada":          (56.1,-106.3, ["kanada"]),
+    "Mexiko":          (23.6,-102.5, ["mexiko"]),
+    "Brasilien":      (-14.2, -51.9, ["brasilien"]),
+    "Argentinien":    (-38.4, -63.6, ["argentinien"]),
+    "Chile":          (-35.7, -71.5, ["chile"]),
+    "Kolumbien":       ( 4.6, -74.3, ["kolumbien"]),
+    "Venezuela":       ( 6.4, -66.6, ["venezuela"]),
+    "China":           (35.9, 104.2, ["china", "peking"]),
+    "Japan":           (36.2, 138.3, ["japan", "tokio"]),
+    "Indien":          (20.6,  78.9, ["indien"]),
+    "Südkorea":        (35.9, 127.8, ["südkorea", "suedkorea"]),
+    "Nordkorea":       (40.3, 127.5, ["nordkorea"]),
+    "Taiwan":          (23.7, 121.0, ["taiwan"]),
+    "Indonesien":     ( -0.8, 113.9, ["indonesien"]),
+    "Vietnam":         (14.1, 108.3, ["vietnam"]),
+    "Thailand":        (15.9, 101.0, ["thailand"]),
+    "Pakistan":        (30.4,  69.3, ["pakistan"]),
+    "Afghanistan":     (33.9,  67.7, ["afghanistan"]),
+    "Iran":            (32.4,  53.7, ["iran", "teheran"]),
+    "Irak":            (33.2,  43.7, ["irak"]),
+    "Syrien":          (34.8,  39.0, ["syrien"]),
+    "Israel":          (31.5,  34.9, ["israel", "gaza", "nahost"]),
+    "Saudi-Arabien":   (23.9,  45.1, ["saudi", "saudi-arabien"]),
+    "Ägypten":         (26.8,  30.8, ["ägypten", "aegypten"]),
+    "Marokko":         (31.8,  -7.1, ["marokko"]),
+    "Algerien":        (28.0,   1.7, ["algerien"]),
+    "Tunesien":        (33.9,   9.5, ["tunesien"]),
+    "Libyen":          (26.3,  17.2, ["libyen"]),
+    "Nigeria":         ( 9.1,   8.7, ["nigeria"]),
+    "Äthiopien":       ( 9.1,  40.5, ["äthiopien", "aethiopien"]),
+    "Kenia":           ( 0.0,  37.9, ["kenia"]),
+    "Südafrika":      (-30.6,  22.9, ["südafrika", "suedafrika"]),
+    "Australien":     (-25.3, 133.8, ["australien"]),
+    "Neuseeland":     (-40.9, 174.9, ["neuseeland"]),
+}
+
+# Wo ich eine gute deutschsprachige Quelle kenne, nehme ich die statt der Suche.
+LAND_FEEDS = {
+    "Schweiz": [("SRF", "https://www.srf.ch/news/bnf/rss/1890"),
+                ("NZZ", "https://www.nzz.ch/schweiz.rss")],
+    "Deutschland": [("Tagesschau", "https://www.tagesschau.de/xml/rss2/")],
+}
+
+
+def land_erkennen(text):
+    """Findet das erste Land, das in Mikas Satz vorkommt.
+    Ganze Woerter — sonst steckt "uk" in "Zucker" und "usa" in "Klausur"."""
+    t = (text or "").lower()
+    treffer = None
+    for name, (lat, lon, worte) in LAENDER.items():
+        for w in worte:
+            m = re.search(r"(?<![a-zäöüß])" + re.escape(w) + r"(?![a-zäöüß])", t)
+            if m and (treffer is None or m.start() < treffer[0]):
+                treffer = (m.start(), name, lat, lon)
+    if not treffer:
+        return None
+    _, name, lat, lon = treffer
+    return {"land": name, "lat": lat, "lon": lon}
+
+
+# Nur der Landesname holt Streuware — jeder deutsche Artikel, der das Land
+# erwaehnt (Formel 1, Reisetipps). Mit Themenwoertern kommt heraus, was im Land
+# wirklich laeuft.
+NEWS_THEMEN = "(Regierung OR Politik OR Wirtschaft OR Wahl OR Krise OR Parlament OR Präsident)"
+
+
+def _google_news(land):
+    q = urllib.parse.quote("%s %s" % (land, NEWS_THEMEN))
+    return [("Google News", "https://news.google.com/rss/search?q=%s&hl=de&gl=CH&ceid=CH:de" % q)]
+
+
+# ---------------------------------------------------------------- Nachrichten (RSS)
+
+# Reihenfolge egal — die Meldungen werden am Schluss nach Zeit sortiert.
+# Zum Ändern einfach Zeilen austauschen: (Anzeigename, RSS-Adresse)
+NEWS_FEEDS = [
+    ("SRF",         "https://www.srf.ch/news/bnf/rss/1922"),      # International
+    ("NZZ",         "https://www.nzz.ch/international.rss"),
+    ("Tagesschau",  "https://www.tagesschau.de/xml/rss2/"),
+]
+
+_news = {}                      # Land (oder "" für die Welt) -> {"t":…, "data":…}
+
+
+def _rss_zeit(roh):
+    """pubDate eines Feeds in ein datetime umwandeln — Feeds sind da unzuverlässig."""
+    if not roh:
+        return None
+    try:
+        import email.utils
+        d = email.utils.parsedate_to_datetime(roh)
+        return d.astimezone() if d.tzinfo else d.replace(tzinfo=datetime.timezone.utc).astimezone()
+    except Exception:
+        return None
+
+
+def _alter(d):
+    if not d:
+        return ""
+    sek = (datetime.datetime.now(d.tzinfo) - d).total_seconds()
+    if sek < 90:
+        return "gerade eben"
+    if sek < 3600:
+        return "vor %d Min" % (sek // 60)
+    if sek < 86400:
+        std = int(sek // 3600)
+        return "vor %d Std" % std
+    tage = int(sek // 86400)
+    return "gestern" if tage == 1 else "vor %d Tagen" % tage
+
+
+def _feed_lesen(name, url):
+    import xml.etree.ElementTree as ET
+    req = urllib.request.Request(url, headers={"User-Agent": "Jarvis/1.0 (persoenlicher Assistent)"})
+    roh = urllib.request.urlopen(req, timeout=12).read()
+    wurzel = ET.fromstring(roh)
+    raus = []
+    for it in wurzel.iter("item"):
+        titel = (it.findtext("title") or "").strip()
+        if not titel:
+            continue
+        quelle = name
+        if name == "Google News" and " - " in titel:
+            titel, _, hinten = titel.rpartition(" - ")
+            if 2 < len(hinten) < 28:
+                quelle = hinten
+        d = _rss_zeit(it.findtext("pubDate"))
+        raus.append({
+            "title": titel,
+            "url": (it.findtext("link") or "").strip(),
+            "source": quelle,
+            "when": _alter(d),
+            "ts": d.timestamp() if d else 0,
+        })
+    return raus
+
+
+def fetch_news(land=None):
+    """Schlagzeilen aus mehreren Feeds, zusammengelegt und nach Zeit sortiert.
+    Ohne Land: die Welt. Mit Land: dessen eigene Quellen oder eine Suche."""
+    schluessel = land or ""
+    topf = _news.setdefault(schluessel, {"t": 0, "data": None})
+    if time.time() - topf["t"] < 900 and topf["data"] is not None:
+        return topf["data"]
+    if land:
+        quellen = LAND_FEEDS.get(land) or _google_news(land)
+    else:
+        quellen = NEWS_FEEDS
+    proQuelle, fehler = [], []
+    for name, url in quellen:
+        try:
+            m = _feed_lesen(name, url)
+            m.sort(key=lambda x: x["ts"], reverse=True)
+            proQuelle.append(m[:12])
+        except Exception as e:
+            fehler.append("%s: %s" % (name, str(e)[:60]))
+    if not any(proQuelle):
+        topf.update(t=time.time(), data={"error": "; ".join(fehler) or "keine Meldungen"})
+        return topf["data"]
+
+    # Abwechselnd aus jeder Quelle ziehen — sonst überschwemmt ein einzelner
+    # Feed mit vielen frischen Meldungen die ganze Liste.
+    gesehen, raus = set(), []
+    for runde in range(12):
+        for liste in proQuelle:
+            if runde >= len(liste) or len(raus) >= 24:
+                continue
+            m = liste[runde]
+            schluessel = m["title"].lower()[:55]
+            if schluessel in gesehen:
+                continue
+            gesehen.add(schluessel)
+            raus.append(m)
+    topf.update(t=time.time(), data=raus)
+    return raus
+
+
+NEWS_WOERTER = ("news", "nachricht", "schlagzeile", "welt", "weltgeschehen", "aktuell",
+                "passiert", "neuigkeit", "politik", "krieg", "wirtschaftslage",
+                "meldung", "presse", "medien",
+                # so redet Mika wirklich
+                "was geht", "geht ab", "abgeht", "was läuft", "was lauft", "läuft gerade",
+                "was ist los", "was los", "los in", "lage in", "situation in", "steht an in",
+                "läuft es in", "lauft es in", "läuft in", "steht es in", "sieht es in",
+                "gibt es neues", "gibts neues", "gibt's neues")
+
+
+def fokus_bestimmen(text):
+    """Fragt Mika nach Nachrichten? Dann sagen wir der Oberfläche, wohin die Erde soll.
+    Mit Land: dorthin. Ohne Land: zurück auf die ganze Welt."""
+    if not any(w in (text or "").lower() for w in NEWS_WOERTER):
+        return None
+    return land_erkennen(text) or {"land": None, "lat": 15.0, "lon": 5.0}
+
+def news_kontext(text, fokus=None):
+    """Nur wenn Mika nach Nachrichten fragt, bekommt das Gehirn die Schlagzeilen mit.
+    Nennt er ein Land, sind es die Schlagzeilen von dort."""
+    t = (text or "").lower()
+    if not any(w in t for w in NEWS_WOERTER):
+        return ""
+    try:
+        n = fetch_news(fokus.get("land") if fokus else None)
+    except Exception:
+        return ""
+    if not isinstance(n, list) or not n:
+        return ""
+    zeilen = "; ".join("%s (%s, %s)" % (m["title"], m["source"], m["when"]) for m in n[:8])
+    woher = ("aus " + fokus["land"]) if (fokus and fokus.get("land")) else "aus der Welt"
+    return (" Das sind die aktuellen Schlagzeilen " + woher + ": " + zeilen + ". "
+            "Nenn höchstens drei davon, fass sie in eigenen Worten zusammen und sag dazu, "
+            "wie alt die Meldung ist. Schreib das als zusammenhängenden Text — keine "
+            "Aufzählung, keine Nummerierung, keine Spiegelstriche.")
+
+
 # ---------------------------------------------------------------- Unterseiten (Posteingang, Woche, Aufgaben)
 
 _mails = {"t": 0, "data": None}
@@ -1139,6 +1387,27 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(500, json.dumps({"error": str(e)[:200]}).encode())
         elif self.path.startswith("/api/followups"):
             self._json_call(lambda c: fetch_followups(c))
+        elif self.path.startswith("/api/news"):
+            try:
+                q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+                roh = (q.get("land", [""])[0] or "").strip()
+                treffer = land_erkennen(roh) if roh else None
+                land = treffer["land"] if treffer else None
+                antwort = {"land": land, "meldungen": fetch_news(land)}
+                if treffer:
+                    antwort["lat"] = treffer["lat"]; antwort["lon"] = treffer["lon"]
+                self._send(200, json.dumps(antwort).encode())
+            except Exception as e:
+                self._send(500, json.dumps({"error": str(e)[:200]}).encode())
+        elif self.path.startswith("/api/welt"):
+            try:
+                with open(os.path.join(APP_DIR, "welt-raster.json"), "rb") as f:
+                    self._send(200, f.read())
+            except FileNotFoundError:
+                self._send(404, json.dumps({"error": "welt-raster.json fehlt"}).encode())
+        elif self.path.startswith("/api/laender"):
+            self._send(200, json.dumps(
+                [{"land": k, "lat": v[0], "lon": v[1]} for k, v in sorted(LAENDER.items())]).encode())
         elif self.path.startswith("/api/reminders"):
             try:
                 self._send(200, json.dumps(fetch_reminders_all()).encode())
@@ -1287,6 +1556,8 @@ class Handler(BaseHTTPRequestHandler):
                     self._send(400, json.dumps({"error": "leere Frage"}).encode())
                     return
                 m, gewechselt = wer_ist_gemeint(text, member(body.get("who")))
+                # Nennt Mika ein Land in einer Nachrichtenfrage, dreht sich die Erde dorthin
+                fokus = fokus_bestimmen(text)
                 morgen = ist_morgengruss(text)
                 thema = ist_postauftrag(text)
                 entwurf = None
@@ -1296,10 +1567,10 @@ class Handler(BaseHTTPRequestHandler):
                     entwurf = post_neu(thema)
                     reply = "Entwurf liegt auf der Seite Beitraege bereit. Lies ihn durch, dann gibst du ihn frei."
                 else:
-                    reply = ask_hermes(text, m["hint"] + team_kontext() + " " + TEXT_HINT)
+                    reply = ask_hermes(text, m["hint"] + team_kontext() + news_kontext(text, fokus) + " " + TEXT_HINT)
                 self._send(200, json.dumps({"reply": reply, "who": m["id"], "name": m["name"],
                                             "switched": gewechselt, "briefing": morgen,
-                                            "post": entwurf}).encode())
+                                            "post": entwurf, "focus": fokus}).encode())
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)[:200]}).encode())
             return
@@ -1345,6 +1616,8 @@ class Handler(BaseHTTPRequestHandler):
             morgen = ist_morgengruss(text)
             thema = ist_postauftrag(text)
             entwurf = None
+            # Nennt Mika ein Land in einer Nachrichtenfrage, dreht sich die Erde dorthin
+            fokus = fokus_bestimmen(text)
             if morgen:
                 step = "briefing"
                 reply = briefing_text(who["name"])
@@ -1355,7 +1628,7 @@ class Handler(BaseHTTPRequestHandler):
                          "Schau ihn dir an — veröffentlicht wird er erst, wenn du ihn freigibst.")
             else:
                 step = "hermes"
-                reply = ask_hermes(text, who["hint"] + team_kontext() + " " + SYSTEM_HINT)
+                reply = ask_hermes(text, who["hint"] + team_kontext() + news_kontext(text, fokus) + " " + SYSTEM_HINT)
             print(f"  {who['name']}: {reply[:120]}")
 
             audio_b64 = ""
@@ -1369,7 +1642,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, json.dumps({
                 "transcript": text, "reply": reply, "audio_b64": audio_b64,
                 "who": who["id"], "name": who["name"], "switched": gewechselt,
-                "briefing": morgen, "post": entwurf
+                "briefing": morgen, "post": entwurf, "focus": fokus
             }).encode())
 
         except urllib.error.HTTPError as e:
