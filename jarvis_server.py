@@ -480,6 +480,34 @@ def _alter(d):
     return "gestern" if tage == 1 else "vor %d Tagen" % tage
 
 
+MEDIA_NS = "{http://search.yahoo.com/mrss/}"
+
+
+def _ohne_tags(roh):
+    """Beschreibungstext ohne HTML — die Feeds packen da Bilder und Links hinein."""
+    import html as _h
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", _h.unescape(roh or ""))).strip()
+
+
+def _bild_aus(it, beschr):
+    """SRF steckt das Bild als <img> in die Beschreibung, NZZ als media:thumbnail."""
+    import html as _h
+    m = re.search(r"<img[^>]+src=[\"']([^\"']+)", _h.unescape(beschr or ""))
+    if m:
+        # SRF liefert im Feed nur 320 Pixel breit — 640 gibt es auch
+        return re.sub(r"/320ws/", "/640ws/", m.group(1))
+    mt = it.find(MEDIA_NS + "thumbnail")
+    if mt is None:
+        mt = it.find(MEDIA_NS + "content")
+    if mt is not None and mt.get("url"):
+        u = mt.get("url")
+        # Die kleinen Vorschaubilder gross genug anfordern
+        u = re.sub(r"width=\d+", "width=440", u)
+        u = re.sub(r"height=\d+", "height=440", u)
+        return u
+    return ""
+
+
 def _feed_lesen(name, url):
     import xml.etree.ElementTree as ET
     req = urllib.request.Request(url, headers={"User-Agent": "Jarvis/1.0 (persoenlicher Assistent)"})
@@ -495,6 +523,11 @@ def _feed_lesen(name, url):
             titel, _, hinten = titel.rpartition(" - ")
             if 2 < len(hinten) < 28:
                 quelle = hinten
+        beschr = it.findtext("description") or ""
+        teaser = _ohne_tags(beschr)[:210]
+        # Google News wiederholt im Teaser nur die Schlagzeile — dann lieber nichts
+        if teaser and (teaser[:40].lower() in titel.lower() or titel[:40].lower() in teaser.lower()):
+            teaser = ""
         d = _rss_zeit(it.findtext("pubDate"))
         raus.append({
             "title": titel,
@@ -502,6 +535,8 @@ def _feed_lesen(name, url):
             "source": quelle,
             "when": _alter(d),
             "ts": d.timestamp() if d else 0,
+            "img": _bild_aus(it, beschr),
+            "teaser": teaser,
         })
     return raus
 
@@ -542,6 +577,12 @@ def fetch_news(land=None):
                 continue
             gesehen.add(schluessel)
             raus.append(m)
+    # Eine Meldung mit Bild als Aufmacher — sonst beginnt die Seite mit einer Textzeile
+    for i, m in enumerate(raus[:6]):
+        if m.get("img"):
+            if i:
+                raus.insert(0, raus.pop(i))
+            break
     topf.update(t=time.time(), data=raus)
     return raus
 
@@ -1466,12 +1507,12 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, json.dumps(antwort).encode())
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)[:200]}).encode())
-        elif self.path.startswith("/api/welt"):
+        elif self.path.startswith("/erde-textur.jpg"):
             try:
-                with open(os.path.join(APP_DIR, "welt-raster.json"), "rb") as f:
-                    self._send(200, f.read())
+                with open(os.path.join(APP_DIR, "erde-textur.jpg"), "rb") as f:
+                    self._send(200, f.read(), "image/jpeg")
             except FileNotFoundError:
-                self._send(404, json.dumps({"error": "welt-raster.json fehlt"}).encode())
+                self._send(404, b"erde-textur.jpg fehlt", "text/plain")
         elif self.path.startswith("/api/laender"):
             self._send(200, json.dumps(
                 [{"land": k, "lat": v[0], "lon": v[1]} for k, v in sorted(LAENDER.items())]).encode())
