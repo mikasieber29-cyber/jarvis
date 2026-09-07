@@ -154,7 +154,14 @@
                        border-radius:999px; padding:5px 12px; font:500 12.5px Barlow,sans-serif; cursor:pointer; }
   .laenderbar button:hover { border-color:var(--accline); color:var(--acc); }
   .laenderbar button.on { background:var(--acc); border-color:var(--acc); color:var(--onacc); font-weight:600; }
-  @media (max-width:1000px) { .weltwrap { grid-template-columns:1fr; } #globe { max-width:340px; height:340px; margin:0 auto; } }
+  /* Kartenmodus: während Jarvis spricht zählt nur die Erde */
+  .weltwrap.nurkarte { grid-template-columns:1fr; }
+  .weltwrap.nurkarte .textseite { display:none; }
+  .weltwrap.nurkarte #globe { max-width:560px; height:520px; }
+  .weltwrap.nurkarte .globe { padding:22px 16px 20px; }
+  .globe .wo, .globe .wosub { transition:opacity .25s; }
+  @media (max-width:1000px) { .weltwrap { grid-template-columns:1fr; } #globe { max-width:340px; height:340px; margin:0 auto; }
+                              .weltwrap.nurkarte #globe { max-width:340px; height:360px; } }
 
   /* ---------- Schlagzeilen ---------- */
   .newsgrid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:0 22px; }
@@ -543,13 +550,13 @@
       <div class="ph"><h2>Welt</h2><span class="pill" id="newsCount">lädt …</span>
         <span class="more" style="margin-left:0">frag Jarvis «was geht in Italien ab» — die Erde dreht sich hin</span>
         <span class="sp"></span><button class="btn" id="newsReload">Aktualisieren</button></div>
-      <div class="weltwrap">
+      <div class="weltwrap" id="weltwrap">
         <div class="globe">
           <canvas id="globe" aria-label="Erdkugel — dreht sich zum gefragten Land"></canvas>
           <div class="wo" id="globeWo">Welt</div>
           <div class="wosub" id="globeSub">alle Quellen</div>
         </div>
-        <div>
+        <div class="textseite">
           <div class="laenderbar" id="laenderbar"></div>
           <div class="card" style="margin-top:12px"><div class="newslist" id="newsList"><div class="empty">Hole Schlagzeilen …</div></div></div>
         </div>
@@ -1058,10 +1065,13 @@
         addLine("Chef", res.j.transcript, false);
         addLine(res.j.name || whoName(), res.j.reply, true);
         setTimeout(loadDashboard, 5000);
-        if (res.j.focus) fokusZeigen(res.j.focus);
         if (res.j.post) { toast("Entwurf liegt unter Beiträge bereit"); if (page === "post") loadPosts(); }
-        if (res.j.audio_b64) sprich(res.j.audio_b64, !!res.j.briefing, resumeListen);
-        else resumeListen();
+        if (res.j.audio_b64) {
+          sprich(res.j.audio_b64, !!res.j.briefing, resumeListen, function (el) { regieStart(res.j, el); });
+        } else {
+          regieStart(res.j, null);
+          resumeListen();
+        }
       })
       .catch(function (err) { busy = false; setState("error", "Brücke nicht erreichbar — läuft jarvis_server.py? ("+err+")"); autoTimer = setTimeout(resumeListen, 4200); });
   }
@@ -1097,7 +1107,7 @@
     }, 60);
   }
 
-  function sprich(b64, briefing, fertig) {
+  function sprich(b64, briefing, fertig, beiStart) {
     var el = new Audio("data:audio/mpeg;base64," + b64), laeuft = false;
     function schluss() {
       audio.detach();
@@ -1107,6 +1117,7 @@
     function los() {
       audio.attachElement(el); audioSrcEl.textContent = "HELMUT"; setState("speaking");
       el.onended = schluss;
+      if (beiStart) beiStart(el);
       el.play().catch(schluss);
     }
     if (!briefing) { los(); return; }
@@ -1146,7 +1157,7 @@
         if (res.who && res.who !== who) { setWho(res.who); if (res.switched) toast(res.name + " übernimmt"); }
         addLine(res.name || whoName(), res.reply, false);
         rounds++; sbCount.textContent = rounds;
-        if (res.focus) fokusZeigen(res.focus);
+        regieStart(res, null);
         setTimeout(loadDashboard, 5000);
       })
       .catch(function (err) {
@@ -1570,15 +1581,74 @@
   document.addEventListener("click", function (e) { var cb = e.target.closest(".cb[data-name]"); if (cb) completeTask(cb); });
   document.addEventListener("keydown", function (e) { if ((e.code === "Space" || e.code === "Enter") && e.target.classList && e.target.classList.contains("cb") && e.target.dataset.name) { e.preventDefault(); completeTask(e.target); } });
 
-  /* Nennt Jarvis in seiner Antwort ein Land, wandert die Erde dorthin und
-     die Welt-Seite zeigt die Schlagzeilen von dort. */
-  function fokusZeigen(f) {
-    if (!f || typeof f.lat !== "number") return;
+  /* ---- Regie: die Erde folgt dem, worüber Jarvis gerade spricht ----
+     Der Server liefert karte_ab (ab welchem Anteil der Antwort die Karte kommt)
+     und orte (Stationen mit derselben Zeitrechnung). Beim Morgenbriefing ist
+     karte_ab der Punkt, an dem die Nachrichten anfangen — vorher bleibt Jarvis
+     auf der Übersicht bei Mails, Terminen und Aufgaben. */
+  var R = { an:false, el:null, timer:null, orte:[], i:0, karteAb:null, t0:0, dauer:0, haupt:null };
+
+  function weltSeiteZeigen() {
     showPage("news");
     if (!landPunkte.length) ladeWelt(); else gresize();
     if (!$("laenderbar").children.length) baueLaenderbar();
-    if (f.land) { drehZu(f.lat, f.lon); loadNews(f.land); }
-    else { drehZurWelt(); loadNews(null); }
+    $("weltwrap").classList.add("nurkarte");
+    setTimeout(gresize, 60);
+  }
+  function kartenModusAus() {
+    $("weltwrap").classList.remove("nurkarte");
+    setTimeout(gresize, 60);
+  }
+
+  function regieAnteil() {
+    if (R.el) return R.el.duration ? Math.min(1, R.el.currentTime / R.el.duration) : 0;
+    return Math.min(1, (Date.now() - R.t0) / R.dauer);
+  }
+  function regieTick() {
+    if (!R.an) return;
+    var a = regieAnteil();
+    if (R.karteAb !== null && a >= R.karteAb - .01) { weltSeiteZeigen(); R.karteAb = null; }
+    while (R.i < R.orte.length && a >= R.orte[R.i].pos - .02) {
+      var o = R.orte[R.i++];
+      drehZu(o.lat, o.lon);
+      $("globeWo").textContent = o.land;
+      $("globeSub").textContent = "davon spricht Jarvis gerade";
+    }
+    if (!R.el && a >= 1) regieEnde();
+  }
+  function regieEnde() {
+    if (!R.an) return;
+    R.an = false;
+    if (R.timer) { clearInterval(R.timer); R.timer = null; }
+    if (R.el) { R.el.removeEventListener("timeupdate", regieTick); R.el.removeEventListener("ended", regieEnde); R.el = null; }
+    /* Nach dem Sprechen kommt die Liste zurück — mit dem Land, um das es ging,
+       nicht mit dem zuletzt beiläufig erwähnten. */
+    var haupt = R.haupt;
+    setTimeout(function () { kartenModusAus(); loadNews(haupt); }, 900);
+  }
+  function regieStop() {
+    if (R.timer) clearInterval(R.timer);
+    if (R.el) { R.el.removeEventListener("timeupdate", regieTick); R.el.removeEventListener("ended", regieEnde); }
+    R.an = false; R.el = null; R.timer = null; R.orte = []; R.i = 0; R.karteAb = null; R.haupt = null;
+  }
+  function regieStart(res, el) {
+    regieStop();
+    var karteAb = (typeof res.karte_ab === "number") ? res.karte_ab : null;
+    var orte = res.orte || [];
+    if (karteAb === null && !orte.length) return;
+    R.an = true; R.orte = orte; R.i = 0; R.karteAb = karteAb; R.el = el || null;
+    /* Worum es ging: das gefragte Land, sonst die erste Station */
+    R.haupt = (res.focus && res.focus.land) || (orte[0] && orte[0].land) || null;
+    if (R.el) {
+      R.el.addEventListener("timeupdate", regieTick);
+      R.el.addEventListener("ended", regieEnde);
+    } else {
+      /* Ohne Ton (Chat): geschätzte Lesedauer, rund 15 Zeichen je Sekunde */
+      R.t0 = Date.now();
+      R.dauer = Math.max(2500, (res.reply || "").length * 66);
+      R.timer = setInterval(regieTick, 120);
+    }
+    regieTick();
   }
 
   /* ---- Globus: Punktraster der Landflächen, dreht sich zum gefragten Land ---- */

@@ -553,7 +553,53 @@ NEWS_WOERTER = ("news", "nachricht", "schlagzeile", "welt", "weltgeschehen", "ak
                 "was geht", "geht ab", "abgeht", "was läuft", "was lauft", "läuft gerade",
                 "was ist los", "was los", "los in", "lage in", "situation in", "steht an in",
                 "läuft es in", "lauft es in", "läuft in", "steht es in", "sieht es in",
+                "sieht es aus", "siehts aus", "sieht's aus", "wie sieht", "steht es um",
                 "gibt es neues", "gibts neues", "gibt's neues")
+
+
+def orte_im_text(text):
+    """Jedes Land, das im Text vorkommt, mit seiner relativen Stelle (0 bis 1).
+    Damit kann die Oberfläche die Erde mitdrehen, während Jarvis spricht."""
+    t = (text or "").lower()
+    if not t:
+        return []
+    treffer = []
+    for name, (lat, lon, worte) in LAENDER.items():
+        for w in worte:
+            for m in re.finditer(r"(?<![a-zäöüß])" + re.escape(w) + r"(?![a-zäöüß])", t):
+                treffer.append((m.start(), name, lat, lon))
+    treffer.sort()
+    raus, letztes = [], None
+    for pos, name, lat, lon in treffer:
+        if name == letztes:                      # nicht zweimal hintereinander dasselbe Land
+            continue
+        letztes = name
+        raus.append({"land": name, "lat": lat, "lon": lon, "pos": round(pos / len(t), 4)})
+    return raus[:8]
+
+
+def regie(reply, morgen, news_ab, fokus):
+    """Sagt der Oberflaeche, ab wann die Weltkarte kommt und wohin sie zeigen soll.
+    karte_ab ist ein Anteil der Antwort (0 = sofort, None = gar nicht),
+    orte sind Stationen mit derselben Zeitrechnung."""
+    if morgen:
+        if not news_ab:
+            return {"karte_ab": None, "orte": []}
+        # Beim Briefing kommt die Karte erst zu den Nachrichten — vorher bleibt
+        # Jarvis auf der Uebersicht bei Mails, Terminen und Aufgaben.
+        orte = [{"land": "Schweiz", "lat": 46.8, "lon": 8.2, "pos": news_ab}]
+        for o in orte_im_text(reply):
+            if o["pos"] > news_ab + .02 and o["land"] != orte[-1]["land"]:
+                orte.append(o)
+        return {"karte_ab": news_ab, "orte": orte[:6]}
+    if not fokus:
+        return {"karte_ab": None, "orte": []}
+    orte = orte_im_text(reply)
+    if fokus.get("land"):
+        # Das gefragte Land zuerst, auch wenn Jarvis es erst spaeter nennt
+        orte = ([{"land": fokus["land"], "lat": fokus["lat"], "lon": fokus["lon"], "pos": 0.0}]
+                + [o for o in orte if o["land"] != fokus["land"]])
+    return {"karte_ab": 0.0, "orte": orte[:6]}
 
 
 def fokus_bestimmen(text):
@@ -1096,8 +1142,29 @@ def briefing_text(name):
     if isinstance(f, dict) and isinstance(f.get("waiting"), list) and f["waiting"]:
         teile.append(f"Und {len(f['waiting'])} Gespräche warten noch auf deine Antwort.")
 
-    teile.append("Womit fangen wir an?")
-    return " ".join(teile)
+    # Bis hierher: Mails, Termine, Aufgaben, Wetter. Jetzt kommt die Welt.
+    vor_news = " ".join(teile)
+
+    news_satz = ""
+    try:
+        n = fetch_news("Schweiz")
+        if isinstance(n, list) and n:
+            def sauber(t):
+                t = t.replace(" – ", ", ").replace(" — ", ", ").replace(" - ", ", ")
+                return t.strip().rstrip(".")
+            koepfe = [sauber(m["title"]) for m in n[:2]]
+            news_satz = "Und noch kurz aus der Schweiz: " + koepfe[0] + "."
+            if len(koepfe) > 1:
+                news_satz += " Ausserdem: " + koepfe[1] + "."
+    except Exception:
+        news_satz = ""
+
+    schluss = "Womit fangen wir an?"
+    ganz = " ".join([vor_news, news_satz, schluss]).replace("  ", " ").strip()
+    # Anteil des Textes, ab dem die Schweizer Nachrichten kommen — daran hängt
+    # die Oberfläche den Wechsel auf die Welt-Seite auf.
+    anteil = (len(vor_news) + 1) / len(ganz) if news_satz else None
+    return {"text": ganz, "news_ab": round(anteil, 4) if anteil else None}
 
 
 # ---------------------------------------------------------------- Beiträge (LinkedIn)
@@ -1561,16 +1628,19 @@ class Handler(BaseHTTPRequestHandler):
                 morgen = ist_morgengruss(text)
                 thema = ist_postauftrag(text)
                 entwurf = None
+                news_ab = None
                 if morgen:
-                    reply = briefing_text(m["name"])
+                    br = briefing_text(m["name"])
+                    reply = br["text"]; news_ab = br["news_ab"]
                 elif thema:
                     entwurf = post_neu(thema)
                     reply = "Entwurf liegt auf der Seite Beitraege bereit. Lies ihn durch, dann gibst du ihn frei."
                 else:
                     reply = ask_hermes(text, m["hint"] + team_kontext() + news_kontext(text, fokus) + " " + TEXT_HINT)
-                self._send(200, json.dumps({"reply": reply, "who": m["id"], "name": m["name"],
-                                            "switched": gewechselt, "briefing": morgen,
-                                            "post": entwurf, "focus": fokus}).encode())
+                self._send(200, json.dumps(dict({"reply": reply, "who": m["id"], "name": m["name"],
+                                                 "switched": gewechselt, "briefing": morgen,
+                                                 "post": entwurf, "focus": fokus},
+                                                **regie(reply, morgen, news_ab, fokus))).encode())
             except Exception as e:
                 self._send(500, json.dumps({"error": str(e)[:200]}).encode())
             return
@@ -1618,9 +1688,11 @@ class Handler(BaseHTTPRequestHandler):
             entwurf = None
             # Nennt Mika ein Land in einer Nachrichtenfrage, dreht sich die Erde dorthin
             fokus = fokus_bestimmen(text)
+            news_ab = None
             if morgen:
                 step = "briefing"
-                reply = briefing_text(who["name"])
+                br = briefing_text(who["name"])
+                reply = br["text"]; news_ab = br["news_ab"]
             elif thema:
                 step = "beitrag"
                 entwurf = post_neu(thema)
@@ -1642,7 +1714,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, json.dumps({
                 "transcript": text, "reply": reply, "audio_b64": audio_b64,
                 "who": who["id"], "name": who["name"], "switched": gewechselt,
-                "briefing": morgen, "post": entwurf, "focus": fokus
+                "briefing": morgen, "post": entwurf, "focus": fokus,
+                **regie(reply, morgen, news_ab, fokus)
             }).encode())
 
         except urllib.error.HTTPError as e:
