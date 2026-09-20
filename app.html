@@ -265,6 +265,52 @@
   .mailview .body { white-space:pre-wrap; word-break:break-word; font-size:14.5px; line-height:1.55; max-width:78ch; }
   .back { display:none; }
 
+  /* ---------- Wochenraster ---------- */
+  .wrahmen { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:0; overflow:hidden; }
+  .wscroll { overflow-x:auto; }
+  .wraster { min-width:720px; }
+  .wkopf { display:grid; grid-template-columns:54px repeat(7,minmax(0,1fr)); border-bottom:1px solid var(--line); }
+  .wkopf .wz { border-right:1px solid var(--line); }
+  .wkopf .wt { padding:9px 6px; text-align:center; border-right:1px solid var(--line); }
+  .wkopf .wt:last-child { border-right:none; }
+  .wkopf .wt b { display:block; font-family:"Inter Tight",sans-serif; font-size:13px; font-weight:700; }
+  .wkopf .wt span { font-family:"IBM Plex Mono","Share Tech Mono",monospace; font-size:10.5px; color:var(--ink3); }
+  .wkopf .wt.heute { background:var(--accsoft); }
+  .wkopf .wt.heute b { color:var(--acc); }
+
+  .wganz { display:grid; grid-template-columns:54px repeat(7,minmax(0,1fr)); border-bottom:1px solid var(--line); min-height:26px; }
+  .wganz .wz { border-right:1px solid var(--line); font-family:"IBM Plex Mono",monospace; font-size:9.5px;
+               color:var(--ink3); display:flex; align-items:center; justify-content:center; letter-spacing:.06em; }
+  .wganz .wspalte { border-right:1px solid var(--line); padding:3px 4px; display:flex; flex-direction:column; gap:2px; }
+  .wganz .wspalte:last-child { border-right:none; }
+
+  .wgitter { display:grid; grid-template-columns:54px repeat(7,minmax(0,1fr)); position:relative; }
+  .wgitter .wz { border-right:1px solid var(--line); position:relative; }
+  .wgitter .wz i { position:absolute; right:7px; transform:translateY(-50%); font-style:normal;
+                   font-family:"IBM Plex Mono","Share Tech Mono",monospace; font-size:10px; color:var(--ink3); }
+  .wspalte { position:relative; border-right:1px solid var(--line); }
+  .wgitter .wspalte:last-child { border-right:none; }
+  .wgitter .wspalte.heute { background:linear-gradient(var(--accsoft),var(--accsoft)); }
+  .wlinie { position:absolute; left:0; right:0; border-top:1px solid var(--line); pointer-events:none; }
+  .wlinie.halb { border-top-style:dotted; opacity:.55; }
+
+  .wev { position:absolute; left:3px; right:3px; border-radius:6px; padding:3px 6px; overflow:hidden;
+         font-size:11.5px; line-height:1.25; cursor:default; border-left:3px solid var(--acc);
+         background:var(--accsoft); color:var(--ink); }
+  .wev b { display:block; font-weight:600; font-size:11.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .wev span { font-family:"IBM Plex Mono","Share Tech Mono",monospace; font-size:9.5px; color:var(--ink2); }
+  .wev.apple { border-left-color:#5AA9E6; background:rgba(90,169,230,.13); }
+  .wev.vorbei { opacity:.45; }
+  .wchip { font-size:10.5px; padding:2px 7px; border-radius:5px; background:var(--accsoft);
+           border-left:3px solid var(--acc); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .wchip.apple { border-left-color:#5AA9E6; background:rgba(90,169,230,.13); }
+  .wjetzt { position:absolute; left:0; right:0; height:0; border-top:2px solid var(--warn); z-index:3; pointer-events:none; }
+  .wjetzt::before { content:""; position:absolute; left:-4px; top:-4px; width:7px; height:7px;
+                    border-radius:50%; background:var(--warn); }
+  .wlegende { display:flex; gap:14px; align-items:center; padding:9px 14px; border-top:1px solid var(--line);
+              font-size:11.5px; color:var(--ink3); flex-wrap:wrap; }
+  .wlegende i { display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:5px; vertical-align:middle; }
+
   /* Termine: Woche nach Tagen */
   .week { display:flex; flex-direction:column; gap:12px; }
   .day { padding:12px 16px; }
@@ -1588,20 +1634,100 @@
   $("mailReload").addEventListener("click", function () { loadMails(); loadFollowups(); });
 
   /* ---- Termine (Woche) ---- */
+  /* ---- Wochenraster: Tage als Spalten, Stunden als Zeilen ----
+     Google und Apple laufen in dieselbe Ansicht; die Quelle steht am linken Rand
+     jedes Blocks. Der sichtbare Stundenbereich richtet sich nach den Terminen. */
+  var STD_PX = 34;                     /* Höhe einer Stunde in Pixeln */
+
+  function minAb(hhmm) {
+    var t = /^(\d{1,2}):(\d{2})$/.exec(hhmm || "");
+    return t ? (+t[1]) * 60 + (+t[2]) : null;
+  }
+
   function loadWeek() {
     $("week").innerHTML = '<div class="card empty">Hole Kalender …</div>';
     fetch("/api/events?days=7").then(function (r) { return r.json(); }).then(function (d) {
-      if (!Array.isArray(d)) { $("week").innerHTML = '<div class="card empty">Kalender nicht erreichbar: ' + esc(d.error || "?") + '</div>'; return; }
+      if (!Array.isArray(d)) {
+        $("week").innerHTML = '<div class="card empty">Kalender nicht erreichbar: ' + esc(d.error || "?") + '</div>';
+        return;
+      }
       loaded.cal = true;
-      $("week").innerHTML = d.map(function (day, i) {
-        var evs = day.events.map(function (ev) {
-          return '<div class="ev' + (ev.past ? ' past' : '') + '"><span class="t">' + esc(ev.when) + (ev.until ? '–' + esc(ev.until) : '') + '</span>' +
-            '<span><span class="ttl">' + esc(ev.title) + '</span>' + (ev.location ? '<div class="loc">' + esc(ev.location) + '</div>' : '') + '</span>' +
-            (ev.allday ? '<span class="pill">ganztags</span>' : (i === 0 && !ev.past ? '<span class="pill hi">heute</span>' : (ev.past ? '<span class="pill">vorbei</span>' : '<span></span>'))) + '</div>';
-        }).join("") || '<div class="free">frei</div>';
-        return '<div class="card day' + (i === 0 ? ' today' : '') + '"><header><h3>' + esc(day.label) + '</h3><span class="sub">' + esc(day.sub) + '</span></header>' + evs + '</div>';
-      }).join("");
+      zeichneWoche(d);
     }).catch(function () { $("week").innerHTML = '<div class="card empty">Brücke nicht erreichbar.</div>'; });
+  }
+
+  function zeichneWoche(tage) {
+    /* Sichtbaren Stundenbereich aus den Terminen bestimmen */
+    var von = 8, bis = 19;
+    tage.forEach(function (t) {
+      t.events.forEach(function (e) {
+        if (e.allday) return;
+        var a = minAb(e.when), b = minAb(e.until);
+        if (a !== null) von = Math.min(von, Math.floor(a / 60));
+        if (b !== null) bis = Math.max(bis, Math.ceil(b / 60));
+        else if (a !== null) bis = Math.max(bis, Math.floor(a / 60) + 1);
+      });
+    });
+    von = Math.max(0, von - 1); bis = Math.min(24, Math.max(bis + 1, von + 6));
+    var hoehe = (bis - von) * STD_PX;
+    var heute = new Date().toISOString().slice(0, 10);
+    var jetztMin = new Date().getHours() * 60 + new Date().getMinutes();
+
+    /* Kopfzeile */
+    var kopf = '<div class="wz"></div>' + tage.map(function (t) {
+      return '<div class="wt' + (t.date === heute ? ' heute' : '') + '"><b>' + esc(t.label) + '</b><span>' + esc(t.sub) + '</span></div>';
+    }).join("");
+
+    /* Ganztägige Einträge */
+    var hatGanz = tage.some(function (t) { return t.events.some(function (e) { return e.allday; }); });
+    var ganz = '<div class="wz">GANZ</div>' + tage.map(function (t) {
+      return '<div class="wspalte">' + t.events.filter(function (e) { return e.allday; }).map(function (e) {
+        return '<div class="wchip' + (e.src === "apple" ? " apple" : "") + '" title="' + esc(e.title) + '">' + esc(e.title) + '</div>';
+      }).join("") + '</div>';
+    }).join("");
+
+    /* Stundenspalte und Linien */
+    var stunden = "";
+    for (var h = von; h <= bis; h++) {
+      stunden += '<i style="top:' + ((h - von) * STD_PX) + 'px">' + (h < 10 ? "0" + h : h) + '</i>';
+    }
+    var linien = "";
+    for (var h2 = von; h2 <= bis; h2++) {
+      linien += '<div class="wlinie" style="top:' + ((h2 - von) * STD_PX) + 'px"></div>';
+      if (h2 < bis) linien += '<div class="wlinie halb" style="top:' + ((h2 - von) * STD_PX + STD_PX / 2) + 'px"></div>';
+    }
+
+    var spalten = tage.map(function (t) {
+      var inhalt = linien;
+      if (t.date === heute && jetztMin >= von * 60 && jetztMin <= bis * 60) {
+        inhalt += '<div class="wjetzt" style="top:' + ((jetztMin - von * 60) / 60 * STD_PX) + 'px"></div>';
+      }
+      t.events.filter(function (e) { return !e.allday; }).forEach(function (e) {
+        var a = minAb(e.when); if (a === null) return;
+        var b = minAb(e.until); if (b === null || b <= a) b = a + 60;
+        var top = (a - von * 60) / 60 * STD_PX;
+        var h3 = Math.max(20, (b - a) / 60 * STD_PX - 2);
+        inhalt += '<div class="wev' + (e.src === "apple" ? " apple" : "") + (e.past ? " vorbei" : "") +
+                  '" style="top:' + top.toFixed(1) + 'px;height:' + h3.toFixed(1) + 'px" title="' +
+                  esc(e.title) + (e.location ? " · " + esc(e.location) : "") + '">' +
+                  '<b>' + esc(e.title) + '</b><span>' + esc(e.when) + (e.until ? "–" + esc(e.until) : "") + '</span></div>';
+      });
+      return '<div class="wspalte' + (t.date === heute ? ' heute' : '') + '" style="height:' + hoehe + 'px">' + inhalt + '</div>';
+    }).join("");
+
+    $("week").innerHTML =
+      '<div class="wrahmen"><div class="wscroll"><div class="wraster">' +
+        '<div class="wkopf">' + kopf + '</div>' +
+        (hatGanz ? '<div class="wganz">' + ganz + '</div>' : '') +
+        '<div class="wgitter">' +
+          '<div class="wz" style="height:' + hoehe + 'px">' + stunden + '</div>' + spalten +
+        '</div>' +
+      '</div></div>' +
+      '<div class="wlegende">' +
+        '<span><i style="background:var(--acc)"></i>Google</span>' +
+        '<span><i style="background:#5AA9E6"></i>Apple</span>' +
+        '<span><i style="background:var(--warn)"></i>jetzt</span>' +
+      '</div></div>';
   }
   $("calReload").addEventListener("click", loadWeek);
 

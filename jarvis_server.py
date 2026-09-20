@@ -816,11 +816,119 @@ def fetch_week(creds, days=7):
             key = dt.date().isoformat()
         item = {"title": ev.get("summary", "(ohne Titel)")[:80], "when": when, "until": until,
                 "allday": allday, "location": (ev.get("location") or "")[:60],
-                "past": (not allday) and dt < now}
+                "past": (not allday) and dt < now, "src": "google"}
         if key in byday:
             byday[key]["events"].append(item)
+
+    # ---- Apple-Kalender dazu ----
+    # Steht derselbe Termin in beiden Quellen (etwa weil das Google-Konto auch
+    # in der Kalender-App haengt), gewinnt Google und Apple wird uebersprungen.
+    schon = set()
+    for tag in daysout:
+        for e in tag["events"]:
+            schon.add((tag["date"], e["when"], e["title"].strip().lower()[:40]))
+
+    for ev in apple_events():
+        d = ev["start"].date()
+        key = d.isoformat()
+        if key not in byday:
+            continue
+        when = "ganztags" if ev["allday"] else ev["start"].strftime("%H:%M")
+        if (key, when, ev["title"].strip().lower()[:40]) in schon:
+            continue
+        byday[key]["events"].append({
+            "title": ev["title"][:80],
+            "when": when,
+            "until": "" if ev["allday"] else ev["ende"].strftime("%H:%M"),
+            "allday": ev["allday"],
+            "location": "",
+            "past": (not ev["allday"]) and ev["start"].astimezone() < now,
+            "src": "apple",
+            "kalender": ev["kalender"][:30],
+        })
+
+    for tag in daysout:
+        tag["events"].sort(key=lambda e: ("0" if e["allday"] else "1") + e["when"])
+
     _week.update(t=time.time(), data=daysout)
     return daysout
+
+
+
+# ---------------------------------------------------------------- Apple-Kalender
+
+# Der Abruf über AppleScript dauert rund neun Sekunden. Deshalb laeuft er im
+# Hintergrund und die Seite bekommt immer den zuletzt geholten Stand.
+# Einzelne Eigenschaften abzufragen waere um ein Vielfaches langsamer — hier
+# kommen ganze Listen auf einmal, und die Datumsangaben als Zahlen statt als
+# lokalisierter Text ("Samstag, 29. November 2025 um 15:00:00").
+APPLE_KAL_SCRIPT = """
+set raus to {}
+tell application "Calendar"
+  repeat with c in calendars
+    set kn to name of c
+    try
+      set ds to start date of every event of c
+      set es to end date of every event of c
+      set ss to summary of every event of c
+      set ganz to allday event of every event of c
+      repeat with i from 1 to (count of ds)
+        set d to item i of ds
+        set e to item i of es
+        set end of raus to kn & "~" & ((year of d) as string) & "-" & ((month of d as integer) as string) & "-" & ((day of d) as string) & "-" & ((hours of d) as string) & "-" & ((minutes of d) as string) & "~" & ((year of e) as string) & "-" & ((month of e as integer) as string) & "-" & ((day of e) as string) & "-" & ((hours of e) as string) & "-" & ((minutes of e) as string) & "~" & (item i of ss) & "~" & ((item i of ganz) as string)
+      end repeat
+    end try
+  end repeat
+end tell
+set AppleScript's text item delimiters to linefeed
+return raus as string
+"""
+
+_apple = {"t": 0, "data": [], "laeuft": False, "fehler": None}
+
+
+def _apple_zeit(teil):
+    j, mo, tg, st, mi = (int(x) for x in teil.split("-"))
+    return datetime.datetime(j, mo, tg, st, mi)
+
+
+def _apple_lesen():
+    """Laeuft im Hintergrund-Thread."""
+    try:
+        r = subprocess.run(["osascript", "-e", APPLE_KAL_SCRIPT],
+                           capture_output=True, text=True, timeout=120)
+        if r.returncode != 0:
+            raise RuntimeError((r.stderr or "").strip()[:150] or "osascript-Fehler")
+        raus = []
+        for zeile in r.stdout.splitlines():
+            teile = zeile.split("~")
+            if len(teile) < 5:
+                continue
+            try:
+                start = _apple_zeit(teile[1])
+                ende = _apple_zeit(teile[2])
+            except Exception:
+                continue
+            raus.append({
+                "kalender": teile[0],
+                "start": start,
+                "ende": ende,
+                "title": "~".join(teile[3:-1]).strip() or "(ohne Titel)",
+                "allday": teile[-1].strip().lower() == "true",
+            })
+        _apple.update(t=time.time(), data=raus, fehler=None)
+    except Exception as e:
+        _apple.update(t=time.time(), fehler=str(e)[:150])
+    finally:
+        _apple["laeuft"] = False
+
+
+def apple_events():
+    """Letzter bekannter Stand; stoesst bei Bedarf eine Auffrischung an."""
+    if not _apple["laeuft"] and time.time() - _apple["t"] > 600:
+        _apple["laeuft"] = True
+        threading.Thread(target=_apple_lesen, daemon=True).start()
+    return _apple["data"]
 
 
 def fetch_reminders_all():
