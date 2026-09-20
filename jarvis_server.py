@@ -73,6 +73,8 @@ def read_env(path):
 ENV = read_env(ENV_PATH)
 ELEVEN_KEY = ENV.get("ELEVENLABS_API_KEY", "")
 HERMES_KEY = ENV.get("API_SERVER_KEY", "")
+TG_TOKEN = ENV.get("TELEGRAM_BOT_TOKEN", "")
+TG_ERLAUBT = {x.strip() for x in ENV.get("TELEGRAM_ALLOWED_USERS", "").split(",") if x.strip()}
 
 if not ELEVEN_KEY:
     print("WARNUNG: kein ELEVENLABS_API_KEY in ~/.hermes/.env — Helmut bleibt stumm.")
@@ -1897,6 +1899,256 @@ class Handler(BaseHTTPRequestHandler):
             self._send(500, json.dumps({"error": step, "detail": str(e)}).encode())
 
 
+
+# ---------------------------------------------------------------- Telegram
+
+# Jarvis holt die Nachrichten selbst ab (Long Polling). Dadurch braucht der Mac
+# keine oeffentliche Adresse und muss nicht erreichbar sein.
+# Achtung: Telegram erlaubt nur EINEN Abholer je Bot. Laeuft anderswo noch ein
+# Dienst auf demselben Token, streiten sich beide um die Nachrichten.
+
+TG_API = "https://api.telegram.org/bot%s/%s"
+_tg = {"offset": 0, "an": False}
+
+
+def tg_ruf(methode, daten=None, roh=False, timeout=70):
+    url = TG_API % (TG_TOKEN, methode)
+    if daten is None:
+        req = urllib.request.Request(url)
+    else:
+        req = urllib.request.Request(url, data=json.dumps(daten).encode(),
+                                     headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return r.read() if roh else json.loads(r.read())
+
+
+def tg_text(chat, text):
+    try:
+        tg_ruf("sendMessage", {"chat_id": chat, "text": text[:4000],
+                               "disable_web_page_preview": True}, timeout=30)
+    except Exception as e:
+        print("  Telegram senden fehlgeschlagen: %s" % e)
+
+
+def tg_tippt(chat, was="typing"):
+    try:
+        tg_ruf("sendChatAction", {"chat_id": chat, "action": was}, timeout=15)
+    except Exception:
+        pass
+
+
+def tg_stimme(chat, text, voice_id=None):
+    """Schickt die Antwort zusaetzlich als Sprachnachricht. Faellt das Guthaben
+    aus, sagen wir das einmal deutlich statt stillschweigend zu schweigen."""
+    if not ELEVEN_KEY:
+        return None
+    try:
+        mp3 = helmut_speaks(text, voice_id)
+    except urllib.error.HTTPError as e:
+        koerper = e.read().decode("utf-8", "replace")
+        if "quota" in koerper.lower():
+            return "Stimme gerade nicht möglich — ElevenLabs-Guthaben aufgebraucht."
+        return "Stimme gerade nicht möglich (%s)." % e.code
+    except Exception as e:
+        return "Stimme gerade nicht möglich (%s)." % str(e)[:60]
+    try:
+        grenze = "----jarvis%d" % int(time.time() * 1000)
+        g = grenze.encode()
+        koerper = (
+            b"--" + g + b"\r\n"
+            + b'Content-Disposition: form-data; name="chat_id"\r\n\r\n'
+            + str(chat).encode() + b"\r\n"
+            + b"--" + g + b"\r\n"
+            + b'Content-Disposition: form-data; name="voice"; filename="jarvis.mp3"\r\n'
+            + b"Content-Type: audio/mpeg\r\n\r\n" + mp3 + b"\r\n"
+            + b"--" + g + b"--\r\n"
+        )
+        req = urllib.request.Request(
+            TG_API % (TG_TOKEN, "sendVoice"), data=koerper,
+            headers={"Content-Type": "multipart/form-data; boundary=" + grenze})
+        urllib.request.urlopen(req, timeout=90).read()
+        return None
+    except Exception as e:
+        return "Ton konnte nicht gesendet werden (%s)." % str(e)[:60]
+
+
+def tg_datei(file_id):
+    d = tg_ruf("getFile", {"file_id": file_id}, timeout=30)
+    pfad = d["result"]["file_path"]
+    url = "https://api.telegram.org/file/bot%s/%s" % (TG_TOKEN, pfad)
+    with urllib.request.urlopen(url, timeout=90) as r:
+        return r.read(), os.path.splitext(pfad)[1] or ".oga"
+
+
+TG_HILFE = (
+    "Ich bin Jarvis. Schreib einfach los oder schick eine Sprachnachricht.\n\n"
+    "/briefing – Mails, Termine, Aufgaben und die Schweizer Schlagzeilen\n"
+    "/mails – was im Posteingang wartet\n"
+    "/termine – die nächsten Tage\n"
+    "/aufgaben – was offen ist\n"
+    "/news – was auf der Welt läuft\n"
+    "/stimme – Sprachantworten ein- oder ausschalten"
+)
+
+
+def tg_liste_mails():
+    d = build_dashboard().get("mails")
+    if not isinstance(d, list):
+        return "Der Posteingang ist gerade nicht erreichbar."
+    neu = [m for m in d if m.get("unread")]
+    if not neu:
+        return "Nichts Neues im Posteingang."
+    zeilen = ["%d neue Mails:" % len(neu)] if len(neu) > 1 else ["Eine neue Mail:"]
+    for m in neu[:8]:
+        zeilen.append("· %s — %s" % (m.get("from", "?"), m.get("subject", "")[:70]))
+    return "\n".join(zeilen)
+
+
+def tg_liste_termine():
+    try:
+        tage = fetch_week(google_creds(), 5)
+    except Exception as e:
+        return "Kalender nicht erreichbar (%s)." % str(e)[:60]
+    zeilen = []
+    for t in tage:
+        evs = t.get("events", [])
+        if not evs:
+            continue
+        zeilen.append("%s, %s" % (t["label"], t["sub"]))
+        for e in evs[:6]:
+            quelle = " · Apple" if e.get("src") == "apple" else ""
+            zeilen.append("  %s  %s%s" % (e.get("when", ""), e.get("title", "")[:60], quelle))
+    return "\n".join(zeilen) if zeilen else "In den nächsten Tagen steht nichts an."
+
+
+def tg_liste_aufgaben():
+    r = fetch_reminders()
+    if not isinstance(r, list):
+        return "Erinnerungen sind gesperrt oder nicht erreichbar."
+    if not r:
+        return "Alles erledigt."
+    return "Offen:\n" + "\n".join("· " + x for x in r[:12])
+
+
+def tg_liste_news():
+    n = fetch_news()
+    if not isinstance(n, list) or not n:
+        return "Keine Schlagzeilen erreichbar."
+    return "Schlagzeilen:\n" + "\n".join(
+        "· %s (%s, %s)" % (m["title"][:80], m["source"], m["when"]) for m in n[:6])
+
+
+def tg_verarbeite(msg):
+    chat = msg["chat"]["id"]
+    absender = str((msg.get("from") or {}).get("id", ""))
+    if TG_ERLAUBT and absender not in TG_ERLAUBT:
+        return                                      # fremde Nachrichten still ignorieren
+
+    text = (msg.get("text") or "").strip()
+    sprach = msg.get("voice") or msg.get("audio")
+
+    # Sprachnachricht zuerst in Text wandeln
+    if sprach:
+        tg_tippt(chat, "record_voice")
+        try:
+            roh, endung = tg_datei(sprach["file_id"])
+            with tempfile.NamedTemporaryFile(suffix=endung, delete=False) as f:
+                f.write(roh); pfad = f.name
+            try:
+                text = transcribe(pfad)
+            finally:
+                os.unlink(pfad)
+        except Exception as e:
+            tg_text(chat, "Die Sprachnachricht konnte ich nicht lesen (%s)." % str(e)[:80])
+            return
+        if not text:
+            tg_text(chat, "Da war nichts zu verstehen.")
+            return
+        tg_text(chat, "» %s" % text)
+
+    if not text:
+        return
+
+    knapp = text.lower().lstrip("/").split("@")[0].split()[0] if text.startswith("/") else ""
+    if knapp in ("start", "hilfe", "help"):
+        tg_text(chat, TG_HILFE); return
+    if knapp == "stimme":
+        _tg["stumm"] = not _tg.get("stumm", False)
+        tg_text(chat, "Sprachantworten sind jetzt %s." % ("aus" if _tg["stumm"] else "an")); return
+    if knapp == "mails":
+        tg_tippt(chat); tg_text(chat, tg_liste_mails()); return
+    if knapp in ("termine", "kalender"):
+        tg_tippt(chat); tg_text(chat, tg_liste_termine()); return
+    if knapp in ("aufgaben", "todos"):
+        tg_tippt(chat); tg_text(chat, tg_liste_aufgaben()); return
+    if knapp == "news":
+        tg_tippt(chat); tg_text(chat, tg_liste_news()); return
+    if knapp == "briefing":
+        text = "Guten Morgen"
+
+    tg_tippt(chat)
+    wer = member(_tg.get("who", "jarvis"))
+    wer, gewechselt = wer_ist_gemeint(text, wer)
+    _tg["who"] = wer["id"]
+    if gewechselt:
+        tg_text(chat, "%s übernimmt." % wer["name"])
+
+    try:
+        if ist_morgengruss(text):
+            antwort = briefing_text(wer["name"])["text"]
+        else:
+            thema = ist_postauftrag(text)
+            if thema:
+                post_neu(thema)
+                antwort = ("Entwurf liegt bereit. Veröffentlicht wird er erst, "
+                           "wenn du ihn freigibst — das geht auf der Beiträge-Seite.")
+            else:
+                fokus = fokus_bestimmen(text)
+                antwort = ask_hermes(text, wer["hint"] + team_kontext()
+                                     + news_kontext(text, fokus) + " " + TEXT_HINT)
+    except Exception as e:
+        tg_text(chat, "Da ist etwas schiefgelaufen: %s" % str(e)[:140]); return
+
+    tg_text(chat, antwort)
+    if not _tg.get("stumm", False):
+        hinweis = tg_stimme(chat, antwort, wer.get("voice_id"))
+        if hinweis and not _tg.get("gewarnt"):
+            _tg["gewarnt"] = True
+            tg_text(chat, hinweis)
+
+
+def telegram_schleife():
+    if not TG_TOKEN:
+        print("  Telegram: kein Token hinterlegt — übersprungen.")
+        return
+    try:
+        ich = tg_ruf("getMe", timeout=20)["result"]
+        print("  Telegram: @%s ist bereit." % ich.get("username"))
+    except Exception as e:
+        print("  Telegram: Bot nicht erreichbar (%s)" % str(e)[:80]); return
+    _tg["an"] = True
+    while True:
+        try:
+            d = tg_ruf("getUpdates", {"offset": _tg["offset"], "timeout": 50,
+                                      "allowed_updates": ["message"]}, timeout=70)
+            for up in d.get("result", []):
+                _tg["offset"] = up["update_id"] + 1
+                msg = up.get("message")
+                if msg:
+                    try:
+                        tg_verarbeite(msg)
+                    except Exception as e:
+                        print("  Telegram-Fehler: %s" % str(e)[:140])
+        except urllib.error.HTTPError as e:
+            if e.code == 409:
+                print("  Telegram: Ein anderer Dienst holt denselben Bot ab — ich halte mich raus.")
+                time.sleep(60)
+            else:
+                time.sleep(5)
+        except Exception:
+            time.sleep(5)
+
+
 def main():
     print("=" * 56)
     print("  JARVIS Brücke — http://localhost:%d" % PORT)
@@ -1905,6 +2157,7 @@ def main():
     print("=" * 56)
     # Spracherkennung im Hintergrund vorladen, damit das erste Gespräch flott ist
     threading.Thread(target=get_whisper, daemon=True).start()
+    threading.Thread(target=telegram_schleife, daemon=True).start()
     try:
         import socket
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
