@@ -1990,7 +1990,10 @@ TG_HILFE = (
     "/mails – was im Posteingang wartet\n"
     "/termine – die nächsten Tage\n"
     "/aufgaben – was offen ist\n"
-    "/news – was auf der Welt läuft"
+    "/news – was auf der Welt läuft\n"
+    "/beitrag <Thema> – Entwurf schreiben lassen\n"
+    "/posts – offene Entwürfe\n"
+    "/freigeben <Nr> – auf LinkedIn veröffentlichen (fragt nochmal nach)"
 )
 
 
@@ -2041,6 +2044,46 @@ def tg_liste_news():
         "· %s (%s, %s)" % (m["title"][:80], m["source"], m["when"]) for m in n[:6])
 
 
+def tg_entwuerfe():
+    """Offene Entwuerfe, neueste zuerst — durchnummeriert, damit Mika im Chat
+    '/freigeben 2' schreiben kann statt einer 13-stelligen Kennung."""
+    offen = [p for p in load_posts() if p.get("status") != "veroeffentlicht"]
+    offen.reverse()
+    _tg["posts"] = [p["id"] for p in offen]
+    return offen
+
+
+def tg_post_nr(arg):
+    """Wandelt '2' in die zugehoerige Beitrags-Kennung."""
+    try:
+        i = int(str(arg).strip()) - 1
+    except Exception:
+        return None
+    ids = _tg.get("posts") or []
+    return ids[i] if 0 <= i < len(ids) else None
+
+
+def tg_zeige_post(p, nr=None):
+    kopf = "Entwurf %s" % ("Nr. %d" % nr if nr else "")
+    if p.get("thema"):
+        kopf += " · %s" % p["thema"][:60]
+    return "%s\n\n%s" % (kopf.strip(), p.get("text", ""))
+
+
+def tg_liste_posts():
+    offen = tg_entwuerfe()
+    st = li_status()
+    fuss = "" if st.get("bereit") else "\n\n(LinkedIn ist noch nicht verbunden — veröffentlichen geht erst danach.)"
+    if not offen:
+        return "Keine offenen Entwürfe. Sag mir ein Thema, dann schreibe ich einen." + fuss
+    zeilen = ["%d offene Entwürfe:" % len(offen) if len(offen) > 1 else "Ein offener Entwurf:"]
+    for i, p in enumerate(offen, 1):
+        vorschau = " ".join((p.get("text") or "").split())[:90]
+        zeilen.append("\n%d. %s\n   %s …" % (i, (p.get("thema") or "ohne Thema")[:50], vorschau))
+    zeilen.append("\n/beitrag 1 zeigt den ganzen Text, /freigeben 1 veröffentlicht ihn." + fuss)
+    return "\n".join(zeilen)
+
+
 def tg_verarbeite(msg):
     chat = msg["chat"]["id"]
     absender = str((msg.get("from") or {}).get("id", ""))
@@ -2086,6 +2129,76 @@ def tg_verarbeite(msg):
         tg_tippt(chat); tg_text(chat, tg_liste_aufgaben()); return
     if knapp == "news":
         tg_tippt(chat); tg_text(chat, tg_liste_news()); return
+
+    # ---- Beiträge ----
+    rest = text.split(None, 1)[1].strip() if len(text.split(None, 1)) > 1 else ""
+    if knapp in ("posts", "entwuerfe", "entwürfe"):
+        tg_tippt(chat); tg_text(chat, tg_liste_posts()); return
+    if knapp == "beitrag":
+        if not rest:
+            tg_text(chat, "Sag mir ein Thema: /beitrag Webdesign für kleine Firmen\n"
+                          "Oder eine Nummer aus /posts, dann zeige ich den Entwurf.")
+            return
+        pid = tg_post_nr(rest)
+        if pid:                                        # Nummer -> Entwurf zeigen
+            for p in load_posts():
+                if p["id"] == pid:
+                    tg_text(chat, tg_zeige_post(p, int(rest))); return
+        tg_tippt(chat)                                 # sonst: neues Thema
+        try:
+            p = post_neu(rest)
+        except Exception as e:
+            tg_text(chat, "Konnte den Entwurf nicht schreiben: %s" % str(e)[:120]); return
+        tg_entwuerfe()
+        tg_text(chat, tg_zeige_post(p, 1))
+        tg_text(chat, "Passt das? /freigeben 1 veröffentlicht ihn, "
+                      "/aendern 1 kürzer lässt mich nachbessern, /verwerfen 1 wirft ihn weg.")
+        return
+    if knapp in ("aendern", "ändern"):
+        teil = rest.split(None, 1)
+        pid = tg_post_nr(teil[0]) if teil else None
+        if not pid or len(teil) < 2:
+            tg_text(chat, "So: /aendern 1 kürzer und persönlicher"); return
+        tg_tippt(chat)
+        try:
+            p = post_aendern(pid, teil[1])
+        except Exception as e:
+            tg_text(chat, "Ging nicht: %s" % str(e)[:120]); return
+        tg_text(chat, tg_zeige_post(p, int(teil[0]))); return
+    if knapp in ("verwerfen", "loeschen", "löschen"):
+        pid = tg_post_nr(rest)
+        if not pid:
+            tg_text(chat, "Welchen? /verwerfen 1"); return
+        save_posts([p for p in load_posts() if p["id"] != pid])
+        _tg.pop("freigabe", None)
+        tg_text(chat, "Weg damit."); return
+    if knapp in ("freigeben", "veroeffentlichen", "veröffentlichen"):
+        st = li_status()
+        if not st.get("bereit"):
+            tg_text(chat, "Veröffentlichen geht noch nicht: %s" % st.get("grund", "LinkedIn nicht verbunden")); return
+        pid = tg_post_nr(rest)
+        if not pid:
+            tg_text(chat, "Welchen? Erst /posts, dann zum Beispiel /freigeben 1"); return
+        for p in load_posts():
+            if p["id"] == pid:
+                _tg["freigabe"] = pid
+                tg_text(chat, tg_zeige_post(p))
+                tg_text(chat, "Das geht so auf LinkedIn raus und ist öffentlich.\n"
+                              "Zum Bestätigen: /ja     Abbrechen: /nein")
+                return
+        tg_text(chat, "Den Entwurf finde ich nicht."); return
+    if knapp == "nein":
+        _tg.pop("freigabe", None); tg_text(chat, "Gut, nichts veröffentlicht."); return
+    if knapp == "ja":
+        pid = _tg.pop("freigabe", None)
+        if not pid:
+            tg_text(chat, "Da ist gerade nichts zum Bestätigen."); return
+        tg_tippt(chat)
+        try:
+            p = post_freigeben(pid)
+        except Exception as e:
+            tg_text(chat, "Veröffentlichen ist fehlgeschlagen: %s" % str(e)[:180]); return
+        tg_text(chat, "Ist draussen." + (("\n" + p["url"]) if p.get("url") else "")); return
     if knapp == "briefing":
         text = "Guten Morgen"
 
@@ -2102,9 +2215,11 @@ def tg_verarbeite(msg):
         else:
             thema = ist_postauftrag(text)
             if thema:
-                post_neu(thema)
-                antwort = ("Entwurf liegt bereit. Veröffentlicht wird er erst, "
-                           "wenn du ihn freigibst — das geht auf der Beiträge-Seite.")
+                p = post_neu(thema)
+                tg_entwuerfe()
+                tg_text(chat, tg_zeige_post(p, 1))
+                antwort = ("Das ist der Entwurf. /freigeben 1 veröffentlicht ihn, "
+                           "/aendern 1 kürzer lässt mich nachbessern.")
             else:
                 fokus = fokus_bestimmen(text)
                 antwort = ask_hermes(text, wer["hint"] + team_kontext()
