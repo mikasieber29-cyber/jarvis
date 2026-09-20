@@ -73,6 +73,10 @@ def read_env(path):
 ENV = read_env(ENV_PATH)
 ELEVEN_KEY = ENV.get("ELEVENLABS_API_KEY", "")
 HERMES_KEY = ENV.get("API_SERVER_KEY", "")
+# Jarvis und das Team antworten nur schriftlich. Auf True setzen, wenn die
+# gesprochene Antwort zurückkommen soll (braucht ElevenLabs-Guthaben).
+STIMME_AN = False
+
 TG_TOKEN = ENV.get("TELEGRAM_BOT_TOKEN", "")
 TG_ERLAUBT = {x.strip() for x in ENV.get("TELEGRAM_ALLOWED_USERS", "").split(",") if x.strip()}
 
@@ -1876,7 +1880,7 @@ class Handler(BaseHTTPRequestHandler):
             print(f"  {who['name']}: {reply[:120]}")
 
             audio_b64 = ""
-            if ELEVEN_KEY:
+            if STIMME_AN and ELEVEN_KEY:
                 step = "helmut"
                 try:
                     audio_b64 = base64.b64encode(helmut_speaks(reply, who.get("voice_id"))).decode()
@@ -1986,8 +1990,7 @@ TG_HILFE = (
     "/mails – was im Posteingang wartet\n"
     "/termine – die nächsten Tage\n"
     "/aufgaben – was offen ist\n"
-    "/news – was auf der Welt läuft\n"
-    "/stimme – Sprachantworten ein- oder ausschalten"
+    "/news – was auf der Welt läuft"
 )
 
 
@@ -2073,8 +2076,8 @@ def tg_verarbeite(msg):
     if knapp in ("start", "hilfe", "help"):
         tg_text(chat, TG_HILFE); return
     if knapp == "stimme":
-        _tg["stumm"] = not _tg.get("stumm", False)
-        tg_text(chat, "Sprachantworten sind jetzt %s." % ("aus" if _tg["stumm"] else "an")); return
+        tg_text(chat, "Ich antworte nur schriftlich. Gesprochene Antworten sind "
+                      "abgeschaltet (STIMME_AN in jarvis_server.py)."); return
     if knapp == "mails":
         tg_tippt(chat); tg_text(chat, tg_liste_mails()); return
     if knapp in ("termine", "kalender"):
@@ -2110,7 +2113,7 @@ def tg_verarbeite(msg):
         tg_text(chat, "Da ist etwas schiefgelaufen: %s" % str(e)[:140]); return
 
     tg_text(chat, antwort)
-    if not _tg.get("stumm", False):
+    if STIMME_AN and not _tg.get("stumm", False):
         hinweis = tg_stimme(chat, antwort, wer.get("voice_id"))
         if hinweis and not _tg.get("gewarnt"):
             _tg["gewarnt"] = True
@@ -2153,7 +2156,7 @@ def main():
     print("=" * 56)
     print("  JARVIS Brücke — http://localhost:%d" % PORT)
     print("  Hermes: %s" % HERMES_URL)
-    print("  Stimme: Helmut (%s)" % ELEVEN_VOICE_ID)
+    print("  Stimme: %s" % ("Helmut (%s)" % ELEVEN_VOICE_ID if STIMME_AN else "aus — nur Text"))
     print("=" * 56)
     # Spracherkennung im Hintergrund vorladen, damit das erste Gespräch flott ist
     threading.Thread(target=get_whisper, daemon=True).start()
