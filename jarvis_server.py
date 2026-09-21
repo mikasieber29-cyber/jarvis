@@ -1993,7 +1993,8 @@ TG_HILFE = (
     "/news – was auf der Welt läuft\n"
     "/beitrag <Thema> – Entwurf schreiben lassen\n"
     "/posts – offene Entwürfe\n"
-    "/freigeben <Nr> – auf LinkedIn veröffentlichen (fragt nochmal nach)"
+    "/freigeben <Nr> – auf LinkedIn veröffentlichen (fragt nochmal nach)\n"
+    "/wache – Meldungen bei neuen Mails und Leads ein- oder ausschalten"
 )
 
 
@@ -2129,6 +2130,10 @@ def tg_verarbeite(msg):
         tg_tippt(chat); tg_text(chat, tg_liste_aufgaben()); return
     if knapp == "news":
         tg_tippt(chat); tg_text(chat, tg_liste_news()); return
+    if knapp == "wache":
+        _wache["an"] = not _wache["an"]
+        tg_text(chat, "Ich melde mich %s von selbst, wenn Mails oder Leads reinkommen."
+                      % ("wieder" if _wache["an"] else "nicht mehr")); return
 
     # ---- Beiträge ----
     rest = text.split(None, 1)[1].strip() if len(text.split(None, 1)) > 1 else ""
@@ -2237,13 +2242,13 @@ def tg_verarbeite(msg):
 
 def telegram_schleife():
     if not TG_TOKEN:
-        print("  Telegram: kein Token hinterlegt — übersprungen.")
+        print("  Telegram: kein Token hinterlegt — übersprungen.", flush=True)
         return
     try:
         ich = tg_ruf("getMe", timeout=20)["result"]
-        print("  Telegram: @%s ist bereit." % ich.get("username"))
+        print("  Telegram: @%s ist bereit." % ich.get("username"), flush=True)
     except Exception as e:
-        print("  Telegram: Bot nicht erreichbar (%s)" % str(e)[:80]); return
+        print("  Telegram: Bot nicht erreichbar (%s)" % str(e)[:80], flush=True); return
     _tg["an"] = True
     while True:
         try:
@@ -2256,15 +2261,108 @@ def telegram_schleife():
                     try:
                         tg_verarbeite(msg)
                     except Exception as e:
-                        print("  Telegram-Fehler: %s" % str(e)[:140])
+                        print("  Telegram-Fehler: %s" % str(e)[:140], flush=True)
         except urllib.error.HTTPError as e:
             if e.code == 409:
-                print("  Telegram: Ein anderer Dienst holt denselben Bot ab — ich halte mich raus.")
+                print("  Telegram: Ein anderer Dienst holt denselben Bot ab — ich halte mich raus.", flush=True)
                 time.sleep(60)
             else:
                 time.sleep(5)
-        except Exception:
+        except Exception as e:
+            print("  Telegram-Schleife: %s" % str(e)[:120], flush=True)
             time.sleep(5)
+
+
+
+# ---------------------------------------------------------------- Wache: meldet Neues von selbst
+
+# Jarvis schaut regelmaessig in den Posteingang und meldet sich per Telegram,
+# wenn etwas hereinkommt. Instantly schickt Lead-Antworten selbst als Mail
+# ("<adresse> may have sent a positive reply"), darum braucht es keine
+# Instantly-Schnittstelle — die Mail ist die Benachrichtigung.
+
+WACHE_TAKT = 180          # alle drei Minuten nachsehen
+WACHE_MAX = 5             # nie mehr als so viele Meldungen auf einmal
+_wache = {"gesehen": set(), "erster": True, "an": True}
+
+# Newsletter und Werbung sollen nicht piepsen — Leads schon, immer.
+WACHE_STUMM = ("CATEGORY_PROMOTIONS", "CATEGORY_SOCIAL", "CATEGORY_FORUMS")
+
+
+def lead_aus_mail(absender, betreff):
+    """Instantly meldet Lead-Antworten per Mail. Gibt die Lead-Adresse zurueck."""
+    if "instantly" not in (absender or "").lower():
+        return None
+    m = re.search(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}", betreff or "")
+    return m.group(0) if m else None
+
+
+def wache_runde(creds):
+    base = "https://gmail.googleapis.com/gmail/v1/users/me/messages"
+    lst = gapi(creds, base + "?maxResults=15&labelIds=INBOX&q=is:unread")
+    neu = []
+    for m in lst.get("messages", []):
+        if m["id"] in _wache["gesehen"]:
+            continue
+        _wache["gesehen"].add(m["id"])
+        if _wache["erster"]:
+            continue                       # beim ersten Lauf nur merken, nicht melden
+        d = gapi(creds, base + "/" + m["id"] +
+                 "?format=metadata&metadataHeaders=From&metadataHeaders=Subject")
+        hdr = {h["name"]: h["value"] for h in d.get("payload", {}).get("headers", [])}
+        absender_roh = hdr.get("From", "")
+        absender = absender_roh.split("<")[0].strip().strip('"') or absender_roh
+        betreff = hdr.get("Subject", "(kein Betreff)")
+        lead = lead_aus_mail(absender_roh, betreff)
+        if not lead and any(k in d.get("labelIds", []) for k in WACHE_STUMM):
+            continue                       # Werbung und Soziales still uebergehen
+        neu.append({"lead": lead, "from": absender[:40], "subject": betreff[:90]})
+    if len(_wache["gesehen"]) > 400:
+        _wache["gesehen"] = set(list(_wache["gesehen"])[-200:])
+    return neu
+
+
+def wache_melden(neu):
+    ziel = ENV.get("TELEGRAM_HOME_CHANNEL") or (list(TG_ERLAUBT)[0] if TG_ERLAUBT else "")
+    if not ziel or not TG_TOKEN:
+        return
+    leads = [n for n in neu if n["lead"]]
+    rest = [n for n in neu if not n["lead"]]
+    for n in leads[:WACHE_MAX]:
+        tg_text(ziel, "Neuer Lead: %s hat positiv geantwortet.\n"
+                      "Steht in der Instantly-Unibox." % n["lead"])
+    if not rest:
+        return
+    if len(rest) == 1:
+        tg_text(ziel, "Neue Mail von %s\n%s" % (rest[0]["from"], rest[0]["subject"]))
+    else:
+        zeilen = ["%d neue Mails:" % len(rest)]
+        for n in rest[:WACHE_MAX]:
+            zeilen.append("· %s — %s" % (n["from"], n["subject"][:60]))
+        if len(rest) > WACHE_MAX:
+            zeilen.append("… und %d weitere" % (len(rest) - WACHE_MAX))
+        tg_text(ziel, "\n".join(zeilen))
+
+
+def wache_schleife():
+    if not TG_TOKEN:
+        return
+    time.sleep(20)                         # dem Start Ruhe lassen
+    while True:
+        try:
+            if _wache["an"]:
+                creds = google_creds()
+                if creds:
+                    neu = wache_runde(creds)
+                    if _wache["erster"]:
+                        _wache["erster"] = False
+                        print("  Wache: %d offene Mails gemerkt, ab jetzt wird gemeldet."
+                              % len(_wache["gesehen"]), flush=True)
+                    elif neu:
+                        wache_melden(neu)
+        except Exception as e:
+            print("  Wache-Fehler: %s" % str(e)[:120], flush=True)
+        time.sleep(WACHE_TAKT)
 
 
 def main():
@@ -2276,6 +2374,7 @@ def main():
     # Spracherkennung im Hintergrund vorladen, damit das erste Gespräch flott ist
     threading.Thread(target=get_whisper, daemon=True).start()
     threading.Thread(target=telegram_schleife, daemon=True).start()
+    threading.Thread(target=wache_schleife, daemon=True).start()
     try:
         import socket
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
