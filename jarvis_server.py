@@ -1994,7 +1994,8 @@ TG_HILFE = (
     "/beitrag <Thema> – Entwurf schreiben lassen\n"
     "/posts – offene Entwürfe\n"
     "/freigeben <Nr> – auf LinkedIn veröffentlichen (fragt nochmal nach)\n"
-    "/wache – Meldungen bei neuen Mails und Leads ein- oder ausschalten"
+    "/schau – jetzt sofort nach neuen Mails und Leads sehen\n"
+    "/wache – das automatische Nachsehen ein- oder ausschalten"
 )
 
 
@@ -2132,8 +2133,21 @@ def tg_verarbeite(msg):
         tg_tippt(chat); tg_text(chat, tg_liste_news()); return
     if knapp == "wache":
         _wache["an"] = not _wache["an"]
-        tg_text(chat, "Ich melde mich %s von selbst, wenn Mails oder Leads reinkommen."
-                      % ("wieder" if _wache["an"] else "nicht mehr")); return
+        if _wache["an"]:
+            tg_text(chat, "Ich sehe wieder nach — um %s Uhr."
+                          % " und ".join("%d" % h for h in WACHE_STUNDEN))
+        else:
+            tg_text(chat, "Gut, ich sehe nicht mehr von selbst nach. /schau geht weiterhin.")
+        return
+    if knapp in ("schau", "nachsehen"):
+        tg_tippt(chat)
+        try:
+            neu = wache_nachsehen(melden=False)
+        except Exception as e:
+            tg_text(chat, "Konnte nicht nachsehen: %s" % str(e)[:100]); return
+        if not neu:
+            tg_text(chat, "Nichts Neues."); return
+        wache_melden(neu); return
 
     # ---- Beiträge ----
     rest = text.split(None, 1)[1].strip() if len(text.split(None, 1)) > 1 else ""
@@ -2281,9 +2295,10 @@ def telegram_schleife():
 # ("<adresse> may have sent a positive reply"), darum braucht es keine
 # Instantly-Schnittstelle — die Mail ist die Benachrichtigung.
 
-WACHE_TAKT = 180          # alle drei Minuten nachsehen
-WACHE_MAX = 5             # nie mehr als so viele Meldungen auf einmal
-_wache = {"gesehen": set(), "erster": True, "an": True}
+# Jarvis sieht zweimal am Tag nach, nicht dauernd. Stunden hier anpassen.
+WACHE_STUNDEN = (12, 18)  # Mittag und Abend
+WACHE_MAX = 8             # nie mehr als so viele Einzelmeldungen auf einmal
+_wache = {"gesehen": set(), "erster": True, "an": True, "zuletzt": None}
 
 # Newsletter und Werbung sollen nicht piepsen — Leads schon, immer.
 WACHE_STUMM = ("CATEGORY_PROMOTIONS", "CATEGORY_SOCIAL", "CATEGORY_FORUMS")
@@ -2336,7 +2351,7 @@ def wache_melden(neu):
     if len(rest) == 1:
         tg_text(ziel, "Neue Mail von %s\n%s" % (rest[0]["from"], rest[0]["subject"]))
     else:
-        zeilen = ["%d neue Mails:" % len(rest)]
+        zeilen = ["%d neue Mails seit dem letzten Mal:" % len(rest)]
         for n in rest[:WACHE_MAX]:
             zeilen.append("· %s — %s" % (n["from"], n["subject"][:60]))
         if len(rest) > WACHE_MAX:
@@ -2344,25 +2359,40 @@ def wache_melden(neu):
         tg_text(ziel, "\n".join(zeilen))
 
 
+def wache_nachsehen(melden=True):
+    """Einmal nachschauen. Gibt zurueck, was gemeldet wurde."""
+    creds = google_creds()
+    if not creds:
+        return []
+    neu = wache_runde(creds)
+    if _wache["erster"]:
+        _wache["erster"] = False
+        print("  Wache: %d offene Mails gemerkt. Nachsehen um %s Uhr."
+              % (len(_wache["gesehen"]), " und ".join(str(h) for h in WACHE_STUNDEN)), flush=True)
+        return []
+    if neu and melden:
+        wache_melden(neu)
+    return neu
+
+
 def wache_schleife():
     if not TG_TOKEN:
         return
     time.sleep(20)                         # dem Start Ruhe lassen
+    try:
+        wache_nachsehen()                  # einmal den Ist-Stand merken
+    except Exception as e:
+        print("  Wache-Fehler: %s" % str(e)[:120], flush=True)
     while True:
         try:
-            if _wache["an"]:
-                creds = google_creds()
-                if creds:
-                    neu = wache_runde(creds)
-                    if _wache["erster"]:
-                        _wache["erster"] = False
-                        print("  Wache: %d offene Mails gemerkt, ab jetzt wird gemeldet."
-                              % len(_wache["gesehen"]), flush=True)
-                    elif neu:
-                        wache_melden(neu)
+            jetzt = datetime.datetime.now()
+            marke = (jetzt.date(), jetzt.hour)
+            if _wache["an"] and jetzt.hour in WACHE_STUNDEN and _wache["zuletzt"] != marke:
+                _wache["zuletzt"] = marke
+                wache_nachsehen()
         except Exception as e:
             print("  Wache-Fehler: %s" % str(e)[:120], flush=True)
-        time.sleep(WACHE_TAKT)
+        time.sleep(60)
 
 
 def main():
