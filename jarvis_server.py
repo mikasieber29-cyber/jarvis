@@ -2134,8 +2134,7 @@ def tg_verarbeite(msg):
     if knapp == "wache":
         _wache["an"] = not _wache["an"]
         if _wache["an"]:
-            tg_text(chat, "Ich sehe wieder nach — um %s Uhr."
-                          % " und ".join("%d" % h for h in WACHE_STUNDEN))
+            tg_text(chat, "Ich melde mich wieder, sobald etwas Wichtiges hereinkommt.")
         else:
             tg_text(chat, "Gut, ich sehe nicht mehr von selbst nach. /schau geht weiterhin.")
         return
@@ -2295,13 +2294,55 @@ def telegram_schleife():
 # ("<adresse> may have sent a positive reply"), darum braucht es keine
 # Instantly-Schnittstelle — die Mail ist die Benachrichtigung.
 
-# Jarvis sieht zweimal am Tag nach, nicht dauernd. Stunden hier anpassen.
-WACHE_STUNDEN = (12, 18)  # Mittag und Abend
-WACHE_MAX = 8             # nie mehr als so viele Einzelmeldungen auf einmal
-_wache = {"gesehen": set(), "erster": True, "an": True, "zuletzt": None}
+WACHE_TAKT = 300          # alle fuenf Minuten nachsehen
+WACHE_MAX = 6             # nie mehr als so viele Meldungen auf einmal
+_wache = {"gesehen": set(), "erster": True, "an": True}
 
-# Newsletter und Werbung sollen nicht piepsen — Leads schon, immer.
-WACHE_STUMM = ("CATEGORY_PROMOTIONS", "CATEGORY_SOCIAL", "CATEGORY_FORUMS")
+# Gmails eigene Wichtigkeits- und Kategorie-Markierungen sind in Mikas
+# Postfach durchweg leer — darauf ist kein Verlass. Deshalb ein eigener
+# Filter, abgeleitet aus dem, was bei ihm tatsaechlich hereinkommt.
+
+# Absender, die nie ein Mensch sind
+WACHE_AUTOMAT = re.compile(
+    r"(noreply|no-reply|donotreply|do-not-reply|mailer-daemon|bounce|"
+    r"newsletter|mailing|notification|automat|billing|invoice|receipt)", re.I)
+
+# Betreffzeilen, die nach Bestellung, Rechnung oder Werbung riechen
+WACHE_RAUSCHEN = re.compile(
+    r"(bestellung|rechnung|quittung|beleg|versand|lieferung|sendungsverfolgung|"
+    r"newsletter|angebot|rabatt|sale|webinar|zur digitalen unterschrift|"
+    r"payment received|invoice|unsubscribe|sicherheitswarnung|"
+    r"ihr unterschriebener vertrag)", re.I)
+
+# Echte Antworten sind fast immer relevant
+WACHE_ANTWORT = re.compile(r"^\s*(re|aw|antw|antwort|fwd|wg)\s*:", re.I)
+
+WICHTIG_HINT = (
+    "Du sortierst Mikas Posteingang. Mika fuehrt mit Nicola und Timo eine kleine "
+    "Agentur fuer Webdesign und Content in der Schweiz. Wichtig sind: Anfragen von "
+    "Kunden und Interessenten, Antworten echter Menschen, Termine, Vertraegliches "
+    "das eine Reaktion braucht, Geld das fehlt. Unwichtig sind: Newsletter, Werbung, "
+    "Bestellbestaetigungen, Rechnungen von Lieferanten, automatische Hinweise, "
+    "Benachrichtigungen von Plattformen. Antworte mit genau einem Wort: WICHTIG oder EGAL."
+)
+
+
+def mail_ist_wichtig(absender, betreff):
+    """Dreistufig: harte Regeln zuerst, im Zweifel entscheidet Jarvis selbst.
+    Das Urteil laeuft ueber Hermes und kostet nichts extra."""
+    if WACHE_AUTOMAT.search(absender or ""):
+        return False
+    # Antwort VOR dem Rauschen pruefen: "Re: Ihr unterschriebener Vertrag" ist
+    # eine Kundenantwort, auch wenn der Betreff nach Automatenpost klingt.
+    if WACHE_ANTWORT.search(betreff or ""):
+        return True
+    if WACHE_RAUSCHEN.search(betreff or ""):
+        return False
+    try:
+        urteil = ask_hermes("Von: %s\nBetreff: %s" % (absender, betreff), WICHTIG_HINT)
+        return "wichtig" in (urteil or "").strip().lower()[:20]
+    except Exception:
+        return True                                  # im Zweifel lieber melden
 
 
 def lead_aus_mail(absender, betreff):
@@ -2329,8 +2370,8 @@ def wache_runde(creds):
         absender = absender_roh.split("<")[0].strip().strip('"') or absender_roh
         betreff = hdr.get("Subject", "(kein Betreff)")
         lead = lead_aus_mail(absender_roh, betreff)
-        if not lead and any(k in d.get("labelIds", []) for k in WACHE_STUMM):
-            continue                       # Werbung und Soziales still uebergehen
+        if not lead and not mail_ist_wichtig(absender_roh, betreff):
+            continue                       # Rauschen still uebergehen
         neu.append({"lead": lead, "from": absender[:40], "subject": betreff[:90]})
     if len(_wache["gesehen"]) > 400:
         _wache["gesehen"] = set(list(_wache["gesehen"])[-200:])
@@ -2351,7 +2392,7 @@ def wache_melden(neu):
     if len(rest) == 1:
         tg_text(ziel, "Neue Mail von %s\n%s" % (rest[0]["from"], rest[0]["subject"]))
     else:
-        zeilen = ["%d neue Mails seit dem letzten Mal:" % len(rest)]
+        zeilen = ["%d neue Mails:" % len(rest)]
         for n in rest[:WACHE_MAX]:
             zeilen.append("· %s — %s" % (n["from"], n["subject"][:60]))
         if len(rest) > WACHE_MAX:
@@ -2367,8 +2408,8 @@ def wache_nachsehen(melden=True):
     neu = wache_runde(creds)
     if _wache["erster"]:
         _wache["erster"] = False
-        print("  Wache: %d offene Mails gemerkt. Nachsehen um %s Uhr."
-              % (len(_wache["gesehen"]), " und ".join(str(h) for h in WACHE_STUNDEN)), flush=True)
+        print("  Wache: %d offene Mails gemerkt, sieht alle %d s nach."
+              % (len(_wache["gesehen"]), WACHE_TAKT), flush=True)
         return []
     if neu and melden:
         wache_melden(neu)
@@ -2385,14 +2426,11 @@ def wache_schleife():
         print("  Wache-Fehler: %s" % str(e)[:120], flush=True)
     while True:
         try:
-            jetzt = datetime.datetime.now()
-            marke = (jetzt.date(), jetzt.hour)
-            if _wache["an"] and jetzt.hour in WACHE_STUNDEN and _wache["zuletzt"] != marke:
-                _wache["zuletzt"] = marke
+            if _wache["an"]:
                 wache_nachsehen()
         except Exception as e:
             print("  Wache-Fehler: %s" % str(e)[:120], flush=True)
-        time.sleep(60)
+        time.sleep(WACHE_TAKT)
 
 
 def main():
